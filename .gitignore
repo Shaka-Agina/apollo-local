@@ -1,0 +1,37 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+
+# env files — never commit secrets
+.env*.local
+.env
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# apollo runtime state
+.apollo-renames.json
+
+# slskd runtime data (native binary, app dir, downloads)
+# config/ holds the live slskd.yml (credentials) — only slskd.example.yml is tracked
+/slskd/bin/
+/slskd/app/
+/slskd/config/*
+!/slskd/config/slskd.example.yml
+/slskd/downloads/
+/slskd/incomplete/
+/slskd/shared/
