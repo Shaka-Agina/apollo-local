@@ -1,0 +1,4 @@
+# Keep container/scripts usable when cloned on Windows or Linux
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf

@@ -11,6 +11,27 @@ A mobile-first, dark, monochromatic Soulseek client. Wraps the [slskd](https://g
 
 ## Setup
 
+### Portainer / Docker (recommended for always-on)
+
+Deploy **Apollo + slskd** as one stack:
+
+→ **[docs/portainer.md](docs/portainer.md)**
+
+In Portainer: **Stacks → Add stack → Repository**
+
+- URL: `https://github.com/Shaka-Agina/apollo-local`
+- Compose path: `docker-compose.yml`
+- Env: `SLSKD_SLSK_USERNAME`, `SLSKD_SLSK_PASSWORD`, `SLSKD_API_KEY`
+
+Or from the CLI:
+
+```bash
+cp .env.example .env   # set username, password, API key
+docker compose up -d --build
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
 ### Windows (dev / portable)
 
 #### 1. Start slskd (native Windows binary)
@@ -47,14 +68,14 @@ Then run it:
 
 Verify the built-in UI loads at [http://localhost:5030](http://localhost:5030).
 
-Alternatively, `docker-compose.yml` is included if you prefer Docker — see `slskd/config/slskd.example.yml` for the container-path config.
-
 #### 2. Configure Apollo
 
 ```bash
 cp .env.example .env.local
-# Set SLSKD_API_KEY to the same value as web.authentication.api_keys.apollo.key in slskd.yml
-# Set SLSKD_CONFIG_PATH to the absolute path of slskd/app/slskd.yml
+# Uncomment the "Local Next.js" section in .env.example and set:
+#   SLSKD_API_KEY  (same as slskd.yml)
+#   SLSKD_CONFIG_PATH  (absolute path to slskd/app/slskd.yml)
+#   SLSKD_URL=http://127.0.0.1:5030
 ```
 
 #### 3. Run
@@ -66,15 +87,15 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Proxmox / Ubuntu VM (always-on)
+### Proxmox / Ubuntu VM (scripted host install)
 
-One-shot installer + manual steps:
+Legacy one-shot that installs Docker + systemd Apollo (still works). Prefer the Portainer stack above if you already have Portainer.
 
 → **[docs/proxmox-ubuntu.md](docs/proxmox-ubuntu.md)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<you>/apollo-local/main/scripts/install-ubuntu.sh \
-  | sudo env REPO_URL=https://github.com/<you>/apollo-local.git bash
+curl -fsSL https://raw.githubusercontent.com/Shaka-Agina/apollo-local/main/scripts/install-ubuntu.sh \
+  | sudo env REPO_URL=https://github.com/Shaka-Agina/apollo-local.git bash
 ```
 
 ## Remote access via Tailscale
@@ -105,6 +126,7 @@ Note: slskd's P2P listen port (`50300`) still needs to be reachable from the int
 
 ## More docs
 
-- [docs/proxmox-ubuntu.md](docs/proxmox-ubuntu.md) — Ubuntu/Debian VM on Proxmox, GitHub one-shot install, Tailscale, Portainer notes
+- [docs/portainer.md](docs/portainer.md) — one-stack Docker/Portainer deploy (Apollo + slskd)
+- [docs/proxmox-ubuntu.md](docs/proxmox-ubuntu.md) — Ubuntu/Debian VM on Proxmox, Tailscale, host installer
 - [docs/portability.md](docs/portability.md) — packaging Apollo + slskd as one portable folder, and updating slskd with `scripts/update-slskd.ps1`
 - [docs/p2p-without-soulseek.md](docs/p2p-without-soulseek.md) — thought experiment: P2P with a friend if the Soulseek server ever shuts down

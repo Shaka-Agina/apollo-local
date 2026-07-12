@@ -9,7 +9,10 @@ import path from "path";
 import type { TransferUserGroup } from "./types";
 import { bucketForState } from "./types";
 
-const STORE_PATH = path.join(process.cwd(), ".apollo-renames.json");
+const STORE_PATH = path.join(
+  process.env.APOLLO_DATA_DIR || process.cwd(),
+  ".apollo-renames.json"
+);
 
 export interface PendingRename {
   username: string;

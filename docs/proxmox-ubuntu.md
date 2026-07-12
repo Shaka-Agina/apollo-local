@@ -195,11 +195,15 @@ sudo systemctl restart apollo
 
 ---
 
-## Dashboard for multiple web apps (Portainer?)
+## Dashboard for multiple web apps (Portainer)
 
-Yes — if this VM becomes a general “run my web apps” box, **[Portainer](https://www.portainer.io/)** (or Dockge, Coolify, etc.) is exactly that kind of dashboard: start/stop stacks, pull updates, view logs, manage Compose projects from a browser.
+**[Portainer](https://www.portainer.io/)** is the dashboard for start/stop, logs, and updates.
 
-Apollo’s installer does **not** install Portainer. Typical next step on the same VM:
+Once Portainer is up, deploy Apollo itself as a stack (Apollo + slskd together):
+
+→ **[docs/portainer.md](docs/portainer.md)**
+
+Quick Portainer install if you still need it:
 
 ```bash
 docker volume create portainer_data
@@ -209,9 +213,7 @@ docker run -d -p 9000:9000 --name portainer --restart=always \
   portainer/portainer-ce:latest
 ```
 
-Then open Portainer over Tailscale (`http://<vm>:9000`) and manage Apollo’s Compose stack plus anything else you add.
-
-You do **not** need a separate Windows PC or Mac Mini for this — Proxmox + one Ubuntu VM is enough.
+Open Portainer over Tailscale (`http://<vm>:9000`).
 
 ---
 

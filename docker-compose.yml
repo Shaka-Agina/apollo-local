@@ -1,15 +1,73 @@
+# Apollo + slskd — one stack for Docker / Portainer
+#
+# Required env (Portainer → Stack → Environment, or a .env file):
+#   SLSKD_SLSK_USERNAME  Soulseek username
+#   SLSKD_SLSK_PASSWORD  Soulseek password
+#   SLSKD_API_KEY        shared API key (16–255 chars); used by Apollo + slskd
+#
+# Optional:
+#   APOLLO_PORT=3000
+#   SLSKD_WEB_PORT=5030
+#   SLSKD_LISTEN_PORT=50300
+
 services:
+  init-config:
+    image: busybox:1.36
+    restart: "no"
+    environment:
+      SLSKD_SLSK_USERNAME: ${SLSKD_SLSK_USERNAME:?Set SLSKD_SLSK_USERNAME}
+      SLSKD_SLSK_PASSWORD: ${SLSKD_SLSK_PASSWORD:?Set SLSKD_SLSK_PASSWORD}
+      SLSKD_API_KEY: ${SLSKD_API_KEY:?Set SLSKD_API_KEY}
+    volumes:
+      - slskd-data:/data
+      - ./docker/init-slskd-config.sh:/init-slskd-config.sh:ro
+    entrypoint: ["/bin/sh", "/init-slskd-config.sh"]
+
   slskd:
     image: slskd/slskd:latest
     container_name: slskd
+    depends_on:
+      init-config:
+        condition: service_completed_successfully
     ports:
-      - "5030:5030" # HTTP API + built-in web UI
-      - "50300:50300" # Soulseek P2P listen port
+      - "${SLSKD_WEB_PORT:-5030}:5030"
+      - "${SLSKD_LISTEN_PORT:-50300}:50300"
     volumes:
-      - ./slskd/config:/app
-      - ./slskd/downloads:/app/downloads
-      - ./slskd/incomplete:/app/incomplete
-      - ./slskd/shared:/app/shared
+      - slskd-data:/app
+      - downloads:/app/downloads
+      - incomplete:/app/incomplete
+      - shared:/app/shared
     environment:
-      - SLSKD_REMOTE_CONFIGURATION=true
+      SLSKD_REMOTE_CONFIGURATION: "true"
     restart: unless-stopped
+
+  apollo:
+    build: .
+    image: apollo-local:latest
+    container_name: apollo
+    # Root so Apollo can write slskd.yml and rename folders under downloads
+    # that slskd creates. Fine for a private home-lab VM behind Tailscale.
+    user: "0:0"
+    depends_on:
+      - slskd
+    ports:
+      - "${APOLLO_PORT:-3000}:3000"
+    environment:
+      SLSKD_URL: http://slskd:5030
+      SLSKD_API_KEY: ${SLSKD_API_KEY:?Set SLSKD_API_KEY}
+      SLSKD_CONFIG_PATH: /slskd-data/slskd.yml
+      APOLLO_DATA_DIR: /data
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    volumes:
+      - slskd-data:/slskd-data
+      - downloads:/app/downloads
+      - apollo-data:/data
+    restart: unless-stopped
+
+volumes:
+  slskd-data:
+  downloads:
+  incomplete:
+  shared:
+  apollo-data:

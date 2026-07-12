@@ -1,4 +1,5 @@
 # Copy to slskd.yml and fill in. Docs: https://github.com/slskd/slskd/blob/master/docs/config.md
+# Docker Compose / Portainer first-run generates this automatically from env vars.
 
 soulseek:
   username: your_soulseek_username
@@ -7,7 +8,7 @@ soulseek:
 
 web:
   authentication:
-    # API key used by Apollo (set the same value in .env.local as SLSKD_API_KEY)
+    # API key used by Apollo (set the same value as SLSKD_API_KEY)
     api_keys:
       apollo:
         key: change_me_to_a_long_random_string
