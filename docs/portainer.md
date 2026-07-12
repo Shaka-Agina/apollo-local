@@ -23,6 +23,10 @@ On every deploy/restart, `init-config` writes those three secrets into `slskd.ym
 
 If Apollo shows `Unknown API key`, set `SLSKD_API_KEY` in the Portainer stack env and **re-pull / redeploy** the stack (a plain container restart is not enough until this sync runs).
 
+`SLSKD_API_KEY` must be **16–255 characters**. Shorter keys make `init-config` exit with code 1.
+
+If `init-config` fails, check Portainer → stack → `init-config` logs for the `error:` line (missing env or key too short are the usual causes).
+
 7. **Deploy the stack** (first build takes a few minutes)
 
 Then open:

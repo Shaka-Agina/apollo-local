@@ -22,8 +22,113 @@ services:
       SLSKD_API_KEY: ${SLSKD_API_KEY:?Set SLSKD_API_KEY}
     volumes:
       - slskd-data:/data
-      - ./docker/init-slskd-config.py:/init-slskd-config.py:ro
-    entrypoint: ["python3", "/init-slskd-config.py"]
+    # No bind-mounted repo files (unreliable in Portainer Git stacks).
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        cat > /tmp/init-slskd-config.py <<'PY'
+        import os, re, sys
+        from pathlib import Path
+
+        CONFIG = Path("/data/slskd.yml")
+        USERNAME = os.environ.get("SLSKD_SLSK_USERNAME", "").strip()
+        PASSWORD = os.environ.get("SLSKD_SLSK_PASSWORD", "").strip()
+        API_KEY = os.environ.get("SLSKD_API_KEY", "").strip()
+
+        def die(msg: str) -> None:
+            print(f"error: {msg}", file=sys.stderr)
+            sys.exit(1)
+
+        def yaml_quote(value: str) -> str:
+            special = set(":#{[]}&*?|>!%@`'\"")
+            if (
+                any(c in special for c in value)
+                or value != value.strip()
+                or value.lower() in ("null", "true", "false", "yes", "no")
+                or "\n" in value
+            ):
+                return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+            return value
+
+        def replace_first(text: str, key: str, value: str) -> str:
+            pattern = rf"^([ \t]*{re.escape(key)}:[ \t]*).*$"
+            return re.sub(
+                pattern,
+                rf"\1{yaml_quote(value)}",
+                text,
+                count=1,
+                flags=re.MULTILINE,
+            )
+
+        def default_config() -> str:
+            return (
+                "# Managed by stack init-config — secrets sync from env on each start.\n"
+                "# Docs: https://github.com/slskd/slskd/blob/master/docs/config.md\n\n"
+                "soulseek:\n"
+                f"  username: {yaml_quote(USERNAME)}\n"
+                f"  password: {yaml_quote(PASSWORD)}\n"
+                "  listen_port: 50300\n\n"
+                "web:\n"
+                "  authentication:\n"
+                "    api_keys:\n"
+                "      apollo:\n"
+                f"        key: {yaml_quote(API_KEY)}\n"
+                "        role: readwrite\n\n"
+                "directories:\n"
+                "  downloads: /app/downloads\n"
+                "  incomplete: /app/incomplete\n\n"
+                "shares:\n"
+                "  directories:\n"
+                "    - /app/shared\n"
+            )
+
+        def sync_existing(text: str) -> str:
+            text = replace_first(text, "username", USERNAME)
+            text = replace_first(text, "password", PASSWORD)
+            m = re.search(
+                r"(^[ \t]*apollo:[ \t]*\n(?:^[ \t]+.+\n)*?^[ \t]+key:[ \t]*).*$",
+                text,
+                flags=re.MULTILINE,
+            )
+            if m:
+                return text[: m.start(1)] + m.group(1) + yaml_quote(API_KEY) + text[m.end() :]
+            if re.search(r"^[ \t]*key:[ \t]*", text, flags=re.MULTILINE):
+                return replace_first(text, "key", API_KEY)
+            return text.rstrip() + (
+                "\n\nweb:\n"
+                "  authentication:\n"
+                "    api_keys:\n"
+                "      apollo:\n"
+                f"        key: {yaml_quote(API_KEY)}\n"
+                "        role: readwrite\n"
+            )
+
+        if not USERNAME:
+            die("Set SLSKD_SLSK_USERNAME")
+        if not PASSWORD:
+            die("Set SLSKD_SLSK_PASSWORD")
+        if not API_KEY:
+            die("Set SLSKD_API_KEY (16-255 chars)")
+        if len(API_KEY) < 16 or len(API_KEY) > 255:
+            die(f"SLSKD_API_KEY must be 16-255 characters (got {len(API_KEY)})")
+
+        try:
+            CONFIG.parent.mkdir(parents=True, exist_ok=True)
+            if CONFIG.exists():
+                CONFIG.write_text(
+                    sync_existing(CONFIG.read_text(encoding="utf-8")),
+                    encoding="utf-8",
+                )
+                print(f"Synced credentials + API key into {CONFIG}")
+            else:
+                CONFIG.write_text(default_config(), encoding="utf-8")
+                print(f"Created {CONFIG}")
+            CONFIG.chmod(0o666)
+        except Exception as exc:
+            die(str(exc))
+        PY
+        python3 /tmp/init-slskd-config.py
 
   slskd:
     image: slskd/slskd:latest
