@@ -103,7 +103,7 @@ export function UserResultGroup({
         });
       }
     }
-    return [...map.values()];
+    return Array.from(map.values());
   }, [response.files, response.username]);
 
   return (

@@ -47,7 +47,7 @@ export function TransferList({ transfers }: { transfers: FlatTransfer[] }) {
         });
       }
     }
-    return [...map.values()].sort(
+    return Array.from(map.values()).sort(
       (a, b) => activityWeight(a.files) - activityWeight(b.files)
     );
   }, [transfers]);
