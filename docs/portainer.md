@@ -19,6 +19,10 @@ One Compose stack runs **Apollo** (UI) and **slskd** (Soulseek). Portainer build
 
 Optional: `APOLLO_PORT=3000`, `SLSKD_WEB_PORT=5030`, `SLSKD_LISTEN_PORT=50300`
 
+On every deploy/restart, `init-config` writes those three secrets into `slskd.yml` automatically (and keeps download/share paths if the file already exists). You should **not** need to edit YAML by hand.
+
+If Apollo shows `Unknown API key`, set `SLSKD_API_KEY` in the Portainer stack env and **re-pull / redeploy** the stack (a plain container restart is not enough until this sync runs).
+
 7. **Deploy the stack** (first build takes a few minutes)
 
 Then open:
