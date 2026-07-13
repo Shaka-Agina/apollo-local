@@ -63,6 +63,7 @@ The repo intentionally ignores everything machine- or identity-specific:
 | `slskd/app/`, `slskd/config/` | Soulseek password + API key live in `slskd.yml` |
 | `slskd/downloads/`, `slskd/incomplete/`, `slskd/shared/` | your music |
 | `.apollo-renames.json` | transient rename queue |
+| `.apollo-collections.json` | liked tracks + playlists (server-side) |
 
 So the git repo is safely shareable, and the *folder* is your portable,
 private instance.

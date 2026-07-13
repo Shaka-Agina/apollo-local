@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { audioUrl } from "@/hooks/useDownloads";
 import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
 
-export type LibraryFilter = "albums" | "singles";
+export type LibraryFilter = "albums" | "artists" | "liked";
 export type LibrarySort = "recent" | "name";
 
 /** Fallback static class when prefs aren't mounted (SSR). */
@@ -87,7 +87,8 @@ export function StickyLibraryChrome({
 }) {
   const pills: { id: LibraryFilter; label: string }[] = [
     { id: "albums", label: "Albums" },
-    { id: "singles", label: "Singles" },
+    { id: "artists", label: "Artists" },
+    { id: "liked", label: "Liked" },
   ];
 
   return (

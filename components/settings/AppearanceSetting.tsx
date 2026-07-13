@@ -131,7 +131,7 @@ export function AppearanceSetting() {
       >
         <ToggleRow
           label="Seek bar"
-          description="The scrubber line under the track — not the time numbers"
+          description="Thin scrubber line (large tap area) — on by default"
           checked={prefs.miniShowProgress}
           onChange={(v) => set("miniShowProgress", v)}
         />

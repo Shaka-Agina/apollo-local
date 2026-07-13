@@ -34,7 +34,7 @@ export const DEFAULT_UI_PREFS: UiPrefs = {
   mobileGridCols: 3,
   desktopGridCols: 6,
 
-  miniShowProgress: false,
+  miniShowProgress: true,
   miniShowPrevNext: false,
   miniShowQueue: false,
   miniShowShuffle: false,

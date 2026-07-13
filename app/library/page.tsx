@@ -6,7 +6,7 @@ import type { Share } from "@/lib/types";
 import { FileTree } from "@/components/library/FileTree";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { cn, formatBytes } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   AlbumGrid,
   AlbumGridCard,
@@ -23,6 +23,8 @@ import {
 } from "@/hooks/useDownloads";
 import { usePlayer, type Track } from "@/components/player/PlayerProvider";
 import { AddToQueueButton } from "@/components/player/QueuePanel";
+import { LikeButton } from "@/components/player/LikeButton";
+import { useLikes } from "@/hooks/useLikes";
 
 type Tab = "downloaded" | "shared";
 
@@ -86,6 +88,7 @@ async function loadAlbumTracks(summary: LocalFolderSummary): Promise<Track[]> {
 
 function DownloadedTab() {
   const listing = useDownloadsListing();
+  const likesQuery = useLikes();
   const player = usePlayer();
   const [filter, setFilter] = useState<LibraryFilter>("albums");
   const [sort, setSort] = useState<LibrarySort>("recent");
@@ -111,19 +114,41 @@ function DownloadedTab() {
     );
   }, [listing.data, search, sort]);
 
-  const singles = useMemo(() => {
-    if (!listing.data) return [];
+  const artists = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; albums: LocalFolderSummary[]; cover: string | null }
+    >();
+    for (const folder of folders) {
+      const name = (folder.artist ?? "Unknown artist").trim() || "Unknown artist";
+      const key = name.toLowerCase();
+      const existing = map.get(key);
+      if (existing) {
+        existing.albums.push(folder);
+        if (!existing.cover && folder.cover) existing.cover = folder.cover;
+      } else {
+        map.set(key, { name, albums: [folder], cover: folder.cover });
+      }
+    }
+    let list = [...map.values()];
+    list.sort((a, b) => a.name.localeCompare(b.name));
     const q = search.trim().toLowerCase();
-    let list = listing.data.rootFiles.filter((f) => isPlayable(f.name));
-    if (q) list = list.filter((f) => f.name.toLowerCase().includes(q));
-    return [...list].sort((a, b) =>
-      sort === "recent"
-        ? b.modifiedAt.localeCompare(a.modifiedAt)
-        : a.name.localeCompare(b.name)
-    );
-  }, [listing.data, search, sort]);
+    if (q) list = list.filter((a) => a.name.toLowerCase().includes(q));
+    return list;
+  }, [folders, search]);
 
-  if (listing.isLoading) {
+  const likedTracks = useMemo(() => {
+    const likes = likesQuery.data?.likes ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return likes;
+    return likes.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        (t.artist ?? "").toLowerCase().includes(q)
+    );
+  }, [likesQuery.data?.likes, search]);
+
+  if (listing.isLoading && filter !== "liked") {
     return (
       <div className="flex justify-center py-16">
         <Spinner />
@@ -131,14 +156,11 @@ function DownloadedTab() {
     );
   }
 
-  if (listing.error) {
+  if (listing.error && filter !== "liked") {
     return (
       <EmptyState title="Cannot read downloads" hint={listing.error.message} />
     );
   }
-
-  const showAlbums = filter === "albums";
-  const showSingles = filter === "singles";
 
   return (
     <div className="space-y-1">
@@ -153,20 +175,26 @@ function DownloadedTab() {
         onToggleSearch={() => setShowSearch((v) => !v)}
       />
 
-      {showAlbums && folders.length === 0 && !showSingles && (
+      {filter === "albums" && folders.length === 0 && (
         <EmptyState
           title={search ? "No matches" : "No downloads yet"}
           hint="Queued downloads appear here when they finish."
         />
       )}
-      {showSingles && singles.length === 0 && !showAlbums && (
+      {filter === "artists" && artists.length === 0 && (
         <EmptyState
-          title={search ? "No matches" : "No singles yet"}
-          hint="Loose files in the downloads root show up here."
+          title={search ? "No matches" : "No artists yet"}
+          hint="Albums with artist metadata show up here."
+        />
+      )}
+      {filter === "liked" && likedTracks.length === 0 && !likesQuery.isLoading && (
+        <EmptyState
+          title={search ? "No matches" : "No liked tracks yet"}
+          hint="Tap the heart on a track to save it here."
         />
       )}
 
-      {showAlbums && folders.length > 0 && (
+      {filter === "albums" && folders.length > 0 && (
         <AlbumGrid>
           {folders.map((folder) => (
             <AlbumGridCard
@@ -197,16 +225,42 @@ function DownloadedTab() {
         </p>
       )}
 
-      {showSingles && singles.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-lg border border-edge bg-surface">
-          {singles.map((file, i) => {
-            const track = {
-              file: file.relativePath,
-              title: file.name.replace(/\.[^.]+$/, ""),
+      {filter === "artists" && artists.length > 0 && (
+        <AlbumGrid>
+          {artists.map((artist) => (
+            <AlbumGridCard
+              key={artist.name}
+              title={artist.name}
+              subtitle={`${artist.albums.length} album${artist.albums.length === 1 ? "" : "s"}`}
+              cover={artist.cover}
+              onClick={async () => {
+                const first = artist.albums[0];
+                if (!first) return;
+                try {
+                  setBusyPath(first.relativePath);
+                  const tracks = await loadAlbumTracks(first);
+                  if (tracks[0]) player.play(tracks[0], tracks);
+                } finally {
+                  setBusyPath(null);
+                }
+              }}
+            />
+          ))}
+        </AlbumGrid>
+      )}
+
+      {filter === "liked" && likedTracks.length > 0 && (
+        <div className="mt-1 overflow-hidden rounded-lg border border-edge bg-surface">
+          {likedTracks.map((liked, i) => {
+            const track: Track = {
+              file: liked.file,
+              title: liked.title,
+              artist: liked.artist,
+              artwork: liked.artwork,
             };
             return (
               <div
-                key={file.relativePath}
+                key={liked.file}
                 className={cn(
                   "flex min-h-[48px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
                   i > 0 && "border-t border-edge"
@@ -216,21 +270,26 @@ function DownloadedTab() {
                   onClick={() =>
                     player.play(
                       track,
-                      singles.map((f) => ({
-                        file: f.relativePath,
-                        title: f.name.replace(/\.[^.]+$/, ""),
+                      likedTracks.map((t) => ({
+                        file: t.file,
+                        title: t.title,
+                        artist: t.artist,
+                        artwork: t.artwork,
                       }))
                     )
                   }
                   className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm text-secondary">
-                    {file.name}
-                  </span>
-                  <span className="font-mono text-[11px] text-muted">
-                    {formatBytes(file.size)}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-secondary">
+                      {liked.title}
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-muted">
+                      {liked.artist ?? "Unknown artist"}
+                    </span>
                   </span>
                 </button>
+                <LikeButton track={track} />
                 <AddToQueueButton track={track} />
               </div>
             );
