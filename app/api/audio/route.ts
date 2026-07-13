@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createReadStream, promises as fs } from "fs";
-import path from "path";
 import { Readable } from "stream";
 import { slskd } from "@/lib/slskd";
+import { resolveUnderDownloads } from "@/lib/local-library";
 
 const MIME: Record<string, string> = {
   mp3: "audio/mpeg",
@@ -13,7 +13,6 @@ const MIME: Record<string, string> = {
   aac: "audio/aac",
   wav: "audio/wav",
   wma: "audio/x-ms-wma",
-  // Cover art
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   png: "image/png",
@@ -22,31 +21,34 @@ const MIME: Record<string, string> = {
 };
 
 /**
- * Resolves a remote Soulseek filename to its local path. slskd saves files as
- * <downloads>/<last remote folder>/<basename>.
+ * Resolves a library relative path (Artist\Album\track.mp3) under downloads.
+ * Falls back to legacy slskd layout (<downloads>/<last folder>/<basename>).
  */
-async function resolveLocalPath(remoteFilename: string): Promise<string | null> {
+async function resolveLocalPath(fileParam: string): Promise<string | null> {
   const options = await slskd<{ directories?: { downloads?: string } }>(
     "/options"
   );
   const downloadsDir = options.directories?.downloads;
   if (!downloadsDir) return null;
 
-  const segments = remoteFilename.split(/[\\/]/).filter(Boolean);
+  const direct = resolveUnderDownloads(downloadsDir, fileParam);
+  if (direct) {
+    const ok = await fs
+      .stat(direct)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (ok) return direct;
+  }
+
+  const segments = fileParam.split(/[\\/]/).filter(Boolean);
   const basename = segments[segments.length - 1];
   const folder = segments.length > 1 ? segments[segments.length - 2] : "";
-
-  const candidate = path.resolve(path.join(downloadsDir, folder, basename));
-
-  // Never serve anything outside the downloads directory.
-  const root = path.resolve(downloadsDir);
-  if (!candidate.startsWith(root + path.sep)) return null;
-
-  return candidate;
+  return resolveUnderDownloads(
+    downloadsDir,
+    folder ? `${folder}\\${basename}` : basename
+  );
 }
 
-// GET /api/audio?file=<remote filename> — streams a downloaded file,
-// with Range support so seeking works.
 export async function GET(req: NextRequest) {
   const file = req.nextUrl.searchParams.get("file");
   if (!file) {
@@ -78,7 +80,6 @@ export async function GET(req: NextRequest) {
   const headers: Record<string, string> = {
     "Content-Type": mime,
     "Accept-Ranges": "bytes",
-    // Cover art can be cached; audio should always stream fresh.
     "Cache-Control": mime.startsWith("image/")
       ? "private, max-age=3600"
       : "no-store",

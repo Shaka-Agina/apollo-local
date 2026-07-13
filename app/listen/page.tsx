@@ -2,56 +2,30 @@
 
 import { useMemo, useState } from "react";
 import { usePlayer, type Track } from "@/components/player/PlayerProvider";
-import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatBytes } from "@/lib/utils";
 import {
+  AlbumGridCard,
+  Artwork,
+  StickyLibraryChrome,
+  type LibraryFilter,
+  type LibrarySort,
+} from "@/components/library/LibraryChrome";
+import {
   audioUrl,
   isPlayable,
   useDownloadsListing,
+  useFetchAlbumMeta,
   type LocalFile,
   type LocalFolder,
 } from "@/hooks/useDownloads";
-
-function Artwork({
-  cover,
-  name,
-  className,
-}: {
-  cover: string | null;
-  name: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-center overflow-hidden bg-surface",
-        className
-      )}
-    >
-      {cover ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={audioUrl(cover)}
-          alt={name}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <span className="select-none font-mono text-3xl font-bold text-muted">
-          {name.charAt(0).toUpperCase()}
-        </span>
-      )}
-    </div>
-  );
-}
 
 function tracksOf(folder: LocalFolder): Track[] {
   return folder.files.filter((f) => isPlayable(f.name)).map((f) => ({
     file: f.relativePath,
     title: f.name.replace(/\.[^.]+$/, ""),
-    artist: folder.name,
+    artist: folder.artist ?? folder.meta?.artist ?? folder.name,
     artwork: folder.cover ? audioUrl(folder.cover) : undefined,
   }));
 }
@@ -64,8 +38,10 @@ function AlbumDetail({
   onBack: () => void;
 }) {
   const player = usePlayer();
+  const fetchMeta = useFetchAlbumMeta();
   const tracks = useMemo(() => tracksOf(folder), [folder]);
   const audioFiles = folder.files.filter((f) => isPlayable(f.name));
+  const artist = folder.meta?.artist ?? folder.artist;
 
   const playFrom = (file: LocalFile) => {
     const track = tracks.find((t) => t.file === file.relativePath);
@@ -73,40 +49,66 @@ function AlbumDetail({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 pb-8">
       <button
         onClick={onBack}
         className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-secondary hover:text-primary"
       >
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
           <polyline points="15,5 8,12 15,19" />
         </svg>
-        Albums
+        Library
       </button>
 
       <div className="flex gap-4">
         <Artwork
           cover={folder.cover}
           name={folder.name}
-          className="h-28 w-28 shrink-0 rounded-lg border border-edge sm:h-36 sm:w-36"
+          className="h-32 w-32 shrink-0 rounded-md sm:h-40 sm:w-40"
         />
         <div className="flex min-w-0 flex-col justify-end gap-2">
-          <h2 className="break-words text-base font-bold text-primary sm:text-lg">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+            Album
+          </p>
+          <h2 className="break-words text-xl font-bold leading-tight text-primary sm:text-2xl">
             {folder.name}
           </h2>
-          <p className="font-mono text-[11px] text-secondary">
+          <p className="truncate text-sm text-secondary">
+            {artist ?? "Unknown artist"}
+            {folder.meta?.year ? ` · ${folder.meta.year}` : ""}
+          </p>
+          <p className="font-mono text-[11px] text-muted">
             {audioFiles.length} tracks · {formatBytes(folder.totalSize)}
           </p>
-          {tracks.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {tracks.length > 0 && (
+              <button
+                onClick={() => player.play(tracks[0], tracks)}
+                className="flex h-9 items-center gap-2 rounded-full bg-accent px-4 font-mono text-[11px] uppercase tracking-widest text-base hover:opacity-90"
+              >
+                Play
+              </button>
+            )}
             <button
-              onClick={() => player.play(tracks[0], tracks)}
-              className="flex h-9 w-fit items-center gap-2 rounded-lg border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-primary hover:bg-hover"
+              onClick={() =>
+                fetchMeta.mutate({
+                  folderRelativePath: folder.relativePath,
+                  query: [artist, folder.name].filter(Boolean).join(" "),
+                })
+              }
+              disabled={fetchMeta.isPending}
+              className="flex h-9 items-center gap-2 rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
             >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-                <path d="M8 5.5v13a.5.5 0 0 0 .77.42l10-6.5a.5.5 0 0 0 0-.84l-10-6.5A.5.5 0 0 0 8 5.5z" />
-              </svg>
-              Play
+              {fetchMeta.isPending ? "Fetching…" : "Fetch cover"}
             </button>
+          </div>
+          {fetchMeta.isError && (
+            <p className="text-xs text-destructive">
+              {(fetchMeta.error as Error).message}
+            </p>
+          )}
+          {fetchMeta.isSuccess && (
+            <p className="text-xs text-secondary">Cover saved to album folder.</p>
           )}
         </div>
       </div>
@@ -149,6 +151,31 @@ function AlbumDetail({
           );
         })}
       </div>
+
+      {/* Extra info */}
+      <section className="space-y-2 rounded-lg border border-edge bg-surface p-4">
+        <h3 className="font-mono text-[11px] uppercase tracking-widest text-muted">
+          About
+        </h3>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt className="text-muted">Artist</dt>
+          <dd className="text-secondary">{artist ?? "—"}</dd>
+          <dt className="text-muted">Album</dt>
+          <dd className="text-secondary">{folder.name}</dd>
+          <dt className="text-muted">Year</dt>
+          <dd className="text-secondary">{folder.meta?.year ?? "—"}</dd>
+          <dt className="text-muted">Genre</dt>
+          <dd className="text-secondary">{folder.meta?.genre ?? "—"}</dd>
+          <dt className="text-muted">Path</dt>
+          <dd className="break-all font-mono text-[11px] text-muted">
+            {folder.relativePath}
+          </dd>
+          <dt className="text-muted">Added</dt>
+          <dd className="font-mono text-[11px] text-muted">
+            {new Date(folder.addedAt).toLocaleString()}
+          </dd>
+        </dl>
+      </section>
     </div>
   );
 }
@@ -156,29 +183,46 @@ function AlbumDetail({
 export default function ListenPage() {
   const listing = useDownloadsListing();
   const player = usePlayer();
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState<LibraryFilter>("albums");
+  const [sort, setSort] = useState<LibrarySort>("recent");
+  const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
 
   const data = listing.data;
 
-  const filteredFolders = useMemo(() => {
+  const folders = useMemo(() => {
     if (!data) return [];
-    const q = filter.trim().toLowerCase();
-    if (!q) return data.folders;
-    return data.folders.filter(
-      (f) =>
-        f.name.toLowerCase().includes(q) ||
-        f.files.some((file) => file.name.toLowerCase().includes(q))
+    const q = search.trim().toLowerCase();
+    let list = data.folders;
+    if (q) {
+      list = list.filter(
+        (f) =>
+          f.name.toLowerCase().includes(q) ||
+          (f.artist ?? "").toLowerCase().includes(q) ||
+          f.files.some((file) => file.name.toLowerCase().includes(q))
+      );
+    }
+    list = [...list].sort((a, b) =>
+      sort === "recent"
+        ? b.addedAt.localeCompare(a.addedAt)
+        : a.name.localeCompare(b.name)
     );
-  }, [data, filter]);
+    return list;
+  }, [data, search, sort]);
 
   const singles = useMemo(() => {
     if (!data) return [];
-    const q = filter.trim().toLowerCase();
-    const playable = data.rootFiles.filter((f) => isPlayable(f.name));
-    if (!q) return playable;
-    return playable.filter((f) => f.name.toLowerCase().includes(q));
-  }, [data, filter]);
+    const q = search.trim().toLowerCase();
+    let list = data.rootFiles.filter((f) => isPlayable(f.name));
+    if (q) list = list.filter((f) => f.name.toLowerCase().includes(q));
+    list = [...list].sort((a, b) =>
+      sort === "recent"
+        ? b.modifiedAt.localeCompare(a.modifiedAt)
+        : a.name.localeCompare(b.name)
+    );
+    return list;
+  }, [data, search, sort]);
 
   const singleTracks = useMemo<Track[]>(
     () =>
@@ -191,27 +235,36 @@ export default function ListenPage() {
 
   const selectedFolder =
     selected != null
-      ? data?.folders.find((f) => f.name === selected) ?? null
+      ? data?.folders.find((f) => f.relativePath === selected) ?? null
       : null;
 
   if (selectedFolder) {
     return (
-      <AlbumDetail folder={selectedFolder} onBack={() => setSelected(null)} />
+      <AlbumDetail
+        folder={selectedFolder}
+        onBack={() => setSelected(null)}
+      />
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <h1 className="font-mono text-lg font-bold uppercase tracking-[0.2em] text-primary">
-        Listen
-      </h1>
+  const showAlbums = filter === "albums" || filter === "all";
+  const showSingles = filter === "singles" || filter === "all";
 
-      <Input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="Search your music"
-        autoComplete="off"
-        spellCheck={false}
+  return (
+    <div className="space-y-1">
+      <div className="mb-2 flex items-center justify-between">
+        <h1 className="text-xl font-bold text-primary">Listen</h1>
+      </div>
+
+      <StickyLibraryChrome
+        filter={filter}
+        onFilter={setFilter}
+        sort={sort}
+        onSort={setSort}
+        search={search}
+        onSearch={setSearch}
+        showSearch={showSearch}
+        onToggleSearch={() => setShowSearch((v) => !v)}
       />
 
       {listing.isLoading && (
@@ -224,43 +277,40 @@ export default function ListenPage() {
         <EmptyState title="Cannot read music" hint={listing.error.message} />
       )}
 
-      {data && filteredFolders.length === 0 && singles.length === 0 && (
-        <EmptyState
-          title={filter ? "No matches" : "Nothing to play yet"}
-          hint={
-            filter
-              ? "Try a different search."
-              : "Download some music and it will show up here."
-          }
-        />
-      )}
+      {data &&
+        ((showAlbums && folders.length === 0) || !showAlbums) &&
+        ((showSingles && singles.length === 0) || !showSingles) &&
+        !listing.isLoading && (
+          <EmptyState
+            title={search ? "No matches" : "Nothing to play yet"}
+            hint={
+              search
+                ? "Try a different search."
+                : "Download some music and it will show up here."
+            }
+          />
+        )}
 
-      {filteredFolders.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-          {filteredFolders.map((folder) => (
-            <button
-              key={folder.name}
-              onClick={() => setSelected(folder.name)}
-              className="group overflow-hidden rounded-lg border border-edge bg-surface text-left transition-colors hover:bg-hover"
-            >
-              <Artwork
-                cover={folder.cover}
-                name={folder.name}
-                className="aspect-square w-full"
-              />
-              <div className="p-2.5">
-                <p className="truncate text-sm text-primary">{folder.name}</p>
-                <p className="font-mono text-[11px] text-secondary">
-                  {folder.files.filter((f) => isPlayable(f.name)).length} tracks
-                </p>
-              </div>
-            </button>
+      {showAlbums && folders.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          {folders.map((folder) => (
+            <AlbumGridCard
+              key={folder.relativePath}
+              title={folder.name}
+              subtitle={
+                folder.artist
+                  ? `Album · ${folder.artist}`
+                  : "Album"
+              }
+              cover={folder.cover}
+              onClick={() => setSelected(folder.relativePath)}
+            />
           ))}
         </div>
       )}
 
-      {singles.length > 0 && (
-        <div className="space-y-2">
+      {showSingles && singles.length > 0 && (
+        <div className="mt-6 space-y-2">
           <h2 className="font-mono text-[11px] uppercase tracking-widest text-muted">
             Singles
           </h2>
@@ -277,17 +327,8 @@ export default function ListenPage() {
                     i > 0 && "border-t border-edge"
                   )}
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-edge text-secondary">
-                    {isPlayingThis ? (
-                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-                        <rect x="6" y="5" width="4" height="14" rx="1" />
-                        <rect x="14" y="5" width="4" height="14" rx="1" />
-                      </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
-                        <path d="M8 5.5v13a.5.5 0 0 0 .77.42l10-6.5a.5.5 0 0 0 0-.84l-10-6.5A.5.5 0 0 0 8 5.5z" />
-                      </svg>
-                    )}
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-elevated text-secondary">
+                    {isPlayingThis ? "❚❚" : "▶"}
                   </span>
                   <span
                     className={cn(
