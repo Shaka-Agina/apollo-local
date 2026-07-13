@@ -8,9 +8,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatBytes } from "@/lib/utils";
 import {
   isPlayable,
+  useAlbumDetail,
   useDownloadsListing,
   type LocalFile,
-  type LocalFolder,
+  type LocalFolderSummary,
 } from "@/hooks/useDownloads";
 
 function FileRow({ file }: { file: LocalFile }) {
@@ -68,10 +69,12 @@ function FolderCard({
   folder,
   defaultOpen,
 }: {
-  folder: LocalFolder;
+  folder: LocalFolderSummary;
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const detail = useAlbumDetail(open ? folder.relativePath : null);
+  const files = detail.data?.folder.files ?? [];
 
   return (
     <div className="overflow-hidden rounded-lg border border-edge bg-surface">
@@ -96,11 +99,16 @@ function FolderCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-primary">{folder.name}</p>
           <p className="font-mono text-[11px] text-secondary">
-            {folder.files.length} files · {formatBytes(folder.totalSize)}
+            {folder.trackCount} tracks · {formatBytes(folder.totalSize)}
           </p>
         </div>
       </button>
-      {open && folder.files.map((f) => <FileRow key={f.relativePath} file={f} />)}
+      {open && detail.isLoading && (
+        <div className="flex justify-center border-t border-edge py-4">
+          <Spinner />
+        </div>
+      )}
+      {open && files.map((f) => <FileRow key={f.relativePath} file={f} />)}
     </div>
   );
 }
@@ -115,19 +123,11 @@ export function DownloadsBrowser() {
     const q = filter.trim().toLowerCase();
     if (!q) return listing.data;
 
-    const folders = listing.data.folders
-      .map((folder) => {
-        if (folder.name.toLowerCase().includes(q)) return folder;
-        const files = folder.files.filter((f) =>
-          f.name.toLowerCase().includes(q)
-        );
-        return {
-          ...folder,
-          files,
-          totalSize: files.reduce((sum, f) => sum + f.size, 0),
-        };
-      })
-      .filter((f) => f.files.length > 0);
+    const folders = listing.data.folders.filter(
+      (folder) =>
+        folder.name.toLowerCase().includes(q) ||
+        (folder.artist ?? "").toLowerCase().includes(q)
+    );
 
     const rootFiles = listing.data.rootFiles.filter((f) =>
       f.name.toLowerCase().includes(q)
@@ -183,7 +183,7 @@ export function DownloadsBrowser() {
         <div className="space-y-2">
           {data.folders.map((folder) => (
             <FolderCard
-              key={folder.name}
+              key={folder.relativePath}
               folder={folder}
               defaultOpen={!!filter}
             />

@@ -8,19 +8,21 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatBytes } from "@/lib/utils";
 import {
+  AlbumGrid,
   AlbumGridCard,
   StickyLibraryChrome,
   type LibraryFilter,
   type LibrarySort,
 } from "@/components/library/LibraryChrome";
 import {
+  audioUrl,
   isPlayable,
   useDownloadsListing,
   type LocalFolder,
+  type LocalFolderSummary,
 } from "@/hooks/useDownloads";
 import { usePlayer, type Track } from "@/components/player/PlayerProvider";
 import { AddToQueueButton } from "@/components/player/QueuePanel";
-import { audioUrl } from "@/hooks/useDownloads";
 
 type Tab = "downloaded" | "shared";
 
@@ -73,6 +75,15 @@ function tracksOf(folder: LocalFolder): Track[] {
   }));
 }
 
+async function loadAlbumTracks(summary: LocalFolderSummary): Promise<Track[]> {
+  const res = await fetch(
+    `/api/library/downloads?album=${encodeURIComponent(summary.relativePath)}`
+  );
+  const body = await res.json();
+  if (!res.ok) throw new Error(body?.error ?? "Failed to load album");
+  return tracksOf(body.folder as LocalFolder);
+}
+
 function DownloadedTab() {
   const listing = useDownloadsListing();
   const player = usePlayer();
@@ -80,6 +91,7 @@ function DownloadedTab() {
   const [sort, setSort] = useState<LibrarySort>("recent");
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [busyPath, setBusyPath] = useState<string | null>(null);
 
   const folders = useMemo(() => {
     if (!listing.data) return [];
@@ -141,34 +153,48 @@ function DownloadedTab() {
         onToggleSearch={() => setShowSearch((v) => !v)}
       />
 
-      {showAlbums && folders.length === 0 && showSingles && singles.length === 0 && (
+      {showAlbums && folders.length === 0 && !showSingles && (
         <EmptyState
           title={search ? "No matches" : "No downloads yet"}
           hint="Queued downloads appear here when they finish."
         />
       )}
+      {showSingles && singles.length === 0 && !showAlbums && (
+        <EmptyState
+          title={search ? "No matches" : "No singles yet"}
+          hint="Loose files in the downloads root show up here."
+        />
+      )}
 
       {showAlbums && folders.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 sm:gap-4">
-          {folders.map((folder) => {
-            const tracks = tracksOf(folder);
-            return (
-              <AlbumGridCard
-                key={folder.relativePath}
-                title={folder.name}
-                subtitle={
-                  folder.artist
-                    ? `Album · ${folder.artist}`
-                    : `${tracks.length} tracks`
-                }
-                cover={folder.cover}
-                onClick={() => {
+        <AlbumGrid>
+          {folders.map((folder) => (
+            <AlbumGridCard
+              key={folder.relativePath}
+              title={folder.name}
+              subtitle={
+                folder.artist
+                  ? `Album · ${folder.artist}`
+                  : `${folder.trackCount} tracks`
+              }
+              cover={folder.cover}
+              onClick={async () => {
+                try {
+                  setBusyPath(folder.relativePath);
+                  const tracks = await loadAlbumTracks(folder);
                   if (tracks[0]) player.play(tracks[0], tracks);
-                }}
-              />
-            );
-          })}
-        </div>
+                } finally {
+                  setBusyPath(null);
+                }
+              }}
+            />
+          ))}
+        </AlbumGrid>
+      )}
+      {busyPath && (
+        <p className="py-2 text-center font-mono text-[11px] text-muted">
+          Loading album…
+        </p>
       )}
 
       {showSingles && singles.length > 0 && (

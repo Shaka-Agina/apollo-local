@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { DownloadFolderSetting } from "@/components/settings/DownloadFolderSetting";
 import { CredentialsSetting } from "@/components/settings/CredentialsSetting";
 import { SharingSetting } from "@/components/settings/SharingSetting";
+import { AppearanceSetting } from "@/components/settings/AppearanceSetting";
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -29,6 +30,13 @@ export default function SettingsPage() {
       <h1 className="font-mono text-lg font-bold uppercase tracking-[0.2em] text-primary">
         Settings
       </h1>
+
+      <section>
+        <h2 className="mb-2 font-mono text-[11px] uppercase tracking-[0.2em] text-secondary">
+          Appearance
+        </h2>
+        <AppearanceSetting />
+      </section>
 
       {isLoading ? (
         <div className="flex justify-center py-16">

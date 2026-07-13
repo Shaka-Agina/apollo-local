@@ -5,6 +5,7 @@ import { slskd } from "@/lib/slskd";
 import {
   COVER_FILE,
   META_FILE,
+  invalidateLibraryCache,
   resolveUnderDownloads,
   type AlbumMeta,
 } from "@/lib/local-library";
@@ -127,6 +128,8 @@ export async function POST(req: NextRequest) {
     JSON.stringify(meta, null, 2),
     "utf8"
   );
+
+  invalidateLibraryCache(downloadsDir);
 
   return NextResponse.json({
     ok: true,

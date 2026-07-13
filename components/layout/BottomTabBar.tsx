@@ -5,10 +5,18 @@ import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "./nav-items";
 import { cn } from "@/lib/utils";
 import { useActiveDownloadCount } from "@/hooks/useTransfers";
+import { usePlayerChrome } from "@/components/prefs/PlayerChromeProvider";
+import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
 
 export function BottomTabBar() {
   const pathname = usePathname();
   const { data: activeCount = 0 } = useActiveDownloadCount();
+  const { expanded, artFocus } = usePlayerChrome();
+  const { prefs } = useUiPrefs();
+
+  if (expanded && artFocus && prefs.focusHideTabBar) {
+    return null;
+  }
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-edge bg-base pb-[env(safe-area-inset-bottom)] sm:hidden">

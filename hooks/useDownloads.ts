@@ -20,20 +20,24 @@ export interface AlbumMeta {
   fetchedAt?: string;
 }
 
-export interface LocalFolder {
+export interface LocalFolderSummary {
   name: string;
   relativePath: string;
   artist: string | null;
-  files: LocalFile[];
   totalSize: number;
   cover: string | null;
   addedAt: string;
+  trackCount: number;
   meta: AlbumMeta | null;
+}
+
+export interface LocalFolder extends LocalFolderSummary {
+  files: LocalFile[];
 }
 
 export interface DownloadsListing {
   downloadsDir: string;
-  folders: LocalFolder[];
+  folders: LocalFolderSummary[];
   rootFiles: LocalFile[];
 }
 
@@ -56,7 +60,27 @@ export function useDownloadsListing() {
       if (!res.ok) throw new Error(body?.error ?? "Failed to load downloads");
       return body;
     },
-    refetchInterval: 15_000,
+    // Server holds the durable index; keep client requests light.
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useAlbumDetail(relativePath: string | null) {
+  return useQuery<{ folder: LocalFolder }>({
+    queryKey: ["album-detail", relativePath],
+    enabled: !!relativePath,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/library/downloads?album=${encodeURIComponent(relativePath!)}`
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error ?? "Failed to load album");
+      return body;
+    },
+    staleTime: 10 * 60_000,
+    gcTime: 60 * 60_000,
   });
 }
 
@@ -80,8 +104,11 @@ export function useFetchAlbumMeta() {
         coverRelativePath: string | null;
       };
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: ["downloads-listing"] });
+      void qc.invalidateQueries({
+        queryKey: ["album-detail", vars.folderRelativePath],
+      });
     },
   });
 }

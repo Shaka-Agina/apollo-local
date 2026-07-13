@@ -1,10 +1,36 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { audioUrl } from "@/hooks/useDownloads";
+import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
 
 export type LibraryFilter = "albums" | "singles";
 export type LibrarySort = "recent" | "name";
+
+/** Fallback static class when prefs aren't mounted (SSR). */
+export const ALBUM_GRID_CLASS =
+  "grid grid-cols-3 gap-3 sm:grid-cols-6 sm:gap-4";
+
+export function useAlbumGridStyle(): React.CSSProperties {
+  const { prefs } = useUiPrefs();
+  const [desktop, setDesktop] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const apply = () => setDesktop(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  const cols = desktop ? prefs.desktopGridCols : prefs.mobileGridCols;
+  return {
+    display: "grid",
+    gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+    gap: desktop ? "1rem" : "0.75rem",
+  };
+}
 
 export function Artwork({
   cover,
@@ -29,6 +55,7 @@ export function Artwork({
           alt={name}
           className="h-full w-full object-cover"
           loading="lazy"
+          decoding="async"
         />
       ) : (
         <span className="select-none font-mono text-2xl font-bold text-muted">
@@ -64,7 +91,7 @@ export function StickyLibraryChrome({
   ];
 
   return (
-    <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-base/95 px-4 pb-3 pt-1 backdrop-blur-md sm:-mx-6 sm:px-6">
+    <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-base px-4 pb-3 pt-1 shadow-[0_1px_0_0_var(--border)] sm:-mx-6 sm:px-6">
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-edge">
           {pills.map((p) => (
@@ -133,16 +160,30 @@ export function AlbumGridCard({
   onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} className="group text-left">
+    <button
+      onClick={onClick}
+      className="group flex h-full w-full flex-col text-left"
+    >
       <Artwork
         cover={cover}
         name={title}
-        className="aspect-square w-full rounded-md shadow-sm transition-opacity group-hover:opacity-90"
+        className="aspect-square w-full shrink-0 rounded-md shadow-sm transition-opacity group-hover:opacity-90"
       />
-      <p className="mt-2 line-clamp-2 text-[13px] font-semibold leading-snug text-primary">
-        {title}
-      </p>
-      <p className="mt-0.5 line-clamp-1 text-[12px] text-secondary">{subtitle}</p>
+      {/* Fixed text block so long titles don't stretch the row */}
+      <div className="mt-2 flex h-[3.25rem] flex-col overflow-hidden">
+        <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-primary">
+          {title}
+        </p>
+        <p className="mt-0.5 truncate text-[12px] leading-tight text-secondary">
+          {subtitle}
+        </p>
+      </div>
     </button>
   );
+}
+
+/** Grid that respects Appearance → column prefs. */
+export function AlbumGrid({ children }: { children: React.ReactNode }) {
+  const style = useAlbumGridStyle();
+  return <div style={style}>{children}</div>;
 }
