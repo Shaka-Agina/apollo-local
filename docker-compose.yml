@@ -11,6 +11,12 @@
 #   APOLLO_PORT=3000
 #   SLSKD_WEB_PORT=5030
 #   SLSKD_LISTEN_PORT=50300
+#
+# Optional NAS binds (set in Portainer env so Git redeploys keep your paths):
+#   MUSIC_DIR=/mnt/homeos/Media/Music
+#   INCOMPLETE_DIR=/mnt/homeos/Media/Apollo/incomplete
+#   SHARED_DIR=/mnt/homeos/Media/Apollo/shared
+# If unset, Docker named volumes are used instead.
 
 services:
   init-config:
@@ -141,9 +147,10 @@ services:
       - "${SLSKD_LISTEN_PORT:-50300}:50300"
     volumes:
       - slskd-data:/app
-      - downloads:/app/downloads
-      - incomplete:/app/incomplete
-      - shared:/app/shared
+      # Absolute MUSIC_DIR → host bind; bare name → named volume
+      - ${MUSIC_DIR:-downloads}:/app/downloads
+      - ${INCOMPLETE_DIR:-incomplete}:/app/incomplete
+      - ${SHARED_DIR:-shared}:/app/shared
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
     restart: unless-stopped
@@ -168,7 +175,7 @@ services:
       HOSTNAME: "0.0.0.0"
     volumes:
       - slskd-data:/slskd-data
-      - downloads:/app/downloads
+      - ${MUSIC_DIR:-downloads}:/app/downloads
       - apollo-data:/data
     restart: unless-stopped
 

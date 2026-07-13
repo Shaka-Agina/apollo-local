@@ -126,6 +126,7 @@ Note: slskd's P2P listen port (`50300`) still needs to be reachable from the int
 
 ## More docs
 
+- [docs/homelab-setup.md](docs/homelab-setup.md) — Proxmox + Portainer + Unraid SMB (step-by-step)
 - [docs/portainer.md](docs/portainer.md) — one-stack Docker/Portainer deploy (Apollo + slskd)
 - [docs/proxmox-ubuntu.md](docs/proxmox-ubuntu.md) — Ubuntu/Debian VM on Proxmox, Tailscale, host installer
 - [docs/portability.md](docs/portability.md) — packaging Apollo + slskd as one portable folder, and updating slskd with `scripts/update-slskd.ps1`

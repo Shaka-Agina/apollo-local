@@ -17,6 +17,14 @@ One Compose stack runs **Apollo** (UI) and **slskd** (Soulseek). Portainer build
 | `SLSKD_SLSK_PASSWORD` | your Soulseek password |
 | `SLSKD_API_KEY` | long random string (16–255 chars) |
 
+Optional music paths (recommended once NAS is mounted — see [homelab-setup.md](./homelab-setup.md)):
+
+| Name | Example |
+|---|---|
+| `MUSIC_DIR` | `/mnt/homeos/Media/Music` |
+| `INCOMPLETE_DIR` | `/mnt/homeos/Media/Apollo/incomplete` |
+| `SHARED_DIR` | `/mnt/homeos/Media/Apollo/shared` |
+
 Optional: `APOLLO_PORT=3000`, `SLSKD_WEB_PORT=5030`, `SLSKD_LISTEN_PORT=50300`
 
 On every deploy/restart, `init-config` writes those three secrets into `slskd.yml` automatically (and keeps download/share paths if the file already exists). You should **not** need to edit YAML by hand.
