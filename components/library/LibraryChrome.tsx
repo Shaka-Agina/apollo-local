@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { audioUrl } from "@/hooks/useDownloads";
 
-export type LibraryFilter = "albums" | "singles" | "all";
+export type LibraryFilter = "albums" | "singles";
 export type LibrarySort = "recent" | "name";
 
 export function Artwork({
@@ -61,7 +61,6 @@ export function StickyLibraryChrome({
   const pills: { id: LibraryFilter; label: string }[] = [
     { id: "albums", label: "Albums" },
     { id: "singles", label: "Singles" },
-    { id: "all", label: "All" },
   ];
 
   return (

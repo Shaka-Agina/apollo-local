@@ -125,8 +125,8 @@ function DownloadedTab() {
     );
   }
 
-  const showAlbums = filter === "albums" || filter === "all";
-  const showSingles = filter === "singles" || filter === "all";
+  const showAlbums = filter === "albums";
+  const showSingles = filter === "singles";
 
   return (
     <div className="space-y-1">
