@@ -4,13 +4,21 @@ import { useState } from "react";
 import { usePlayer } from "./PlayerProvider";
 import { cn, formatDuration } from "@/lib/utils";
 
-export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
+export function FullPlayer({
+  onCollapse,
+  onOpenQueue,
+}: {
+  onCollapse: () => void;
+  onOpenQueue: () => void;
+}) {
   const {
     track,
     playing,
     currentTime,
     duration,
     repeat,
+    shuffle,
+    queue,
     hasNext,
     hasPrevious,
     toggle,
@@ -18,6 +26,7 @@ export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
     next,
     previous,
     cycleRepeat,
+    toggleShuffle,
     stop,
   } = usePlayer();
 
@@ -29,7 +38,6 @@ export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
 
   return (
     <div className="fixed inset-x-0 top-0 z-[70] flex flex-col bg-base pb-6 pt-[calc(16px+env(safe-area-inset-top))] bottom-[calc(56px+env(safe-area-inset-bottom))] sm:bottom-0 sm:pb-[calc(24px+env(safe-area-inset-bottom))]">
-      {/* Header — fades in art-focus */}
       <div
         className={cn(
           "flex items-center justify-between px-5 transition-opacity duration-300",
@@ -48,22 +56,39 @@ export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
         <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted">
           Now playing
         </span>
-        <button
-          onClick={() => {
-            stop();
-            onCollapse();
-          }}
-          aria-label="Close player"
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:text-primary"
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
-            <line x1="6" y1="6" x2="18" y2="18" />
-            <line x1="18" y1="6" x2="6" y2="18" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onOpenQueue}
+            aria-label="Open queue"
+            className="relative flex h-10 w-10 items-center justify-center rounded-lg text-secondary hover:text-primary"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="14" y2="17" />
+            </svg>
+            {queue.length > 1 && (
+              <span className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-hover px-1 font-mono text-[9px] text-primary">
+                {queue.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              stop();
+              onCollapse();
+            }}
+            aria-label="Close player"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-muted hover:text-primary"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Artwork — tap toggles focus mode */}
       <button
         type="button"
         onClick={() => setArtFocus((v) => !v)}
@@ -106,7 +131,6 @@ export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
         </div>
       </button>
 
-      {/* Controls block — fades when focused on art */}
       <div
         className={cn(
           "transition-opacity duration-300",
@@ -147,26 +171,22 @@ export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-6 px-8 pt-4">
+        <div className="flex items-center justify-center gap-5 px-8 pt-4">
           <button
-            onClick={cycleRepeat}
-            aria-label={`Repeat: ${repeat}`}
+            onClick={toggleShuffle}
+            aria-label={`Shuffle: ${shuffle ? "on" : "off"}`}
             className={cn(
-              "relative flex h-11 w-11 items-center justify-center rounded-lg",
-              repeat === "off" ? "text-muted hover:text-secondary" : "text-primary"
+              "flex h-11 w-11 items-center justify-center rounded-lg",
+              shuffle ? "text-primary" : "text-muted hover:text-secondary"
             )}
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 2l4 4-4 4" />
-              <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
-              <path d="M7 22l-4-4 4-4" />
-              <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+              <polyline points="16,3 21,3 21,8" />
+              <line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21,16 21,21 16,21" />
+              <line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
             </svg>
-            {repeat === "one" && (
-              <span className="absolute right-1 top-1 font-mono text-[10px] font-bold">
-                1
-              </span>
-            )}
           </button>
 
           <button
@@ -208,7 +228,26 @@ export function FullPlayer({ onCollapse }: { onCollapse: () => void }) {
             </svg>
           </button>
 
-          <span className="h-11 w-11" />
+          <button
+            onClick={cycleRepeat}
+            aria-label={`Repeat: ${repeat}`}
+            className={cn(
+              "relative flex h-11 w-11 items-center justify-center rounded-lg",
+              repeat === "off" ? "text-muted hover:text-secondary" : "text-primary"
+            )}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 2l4 4-4 4" />
+              <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+              <path d="M7 22l-4-4 4-4" />
+              <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+            </svg>
+            {repeat === "one" && (
+              <span className="absolute right-1 top-1 font-mono text-[10px] font-bold">
+                1
+              </span>
+            )}
+          </button>
         </div>
       </div>
     </div>

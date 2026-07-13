@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { usePlayer, type Track } from "@/components/player/PlayerProvider";
+import { AddToQueueButton } from "@/components/player/QueuePanel";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatBytes } from "@/lib/utils";
@@ -120,34 +121,40 @@ function AlbumDetail({
         {audioFiles.map((file, i) => {
           const isCurrent = player.track?.file === file.relativePath;
           const isPlayingThis = isCurrent && player.playing;
+          const track = tracks.find((t) => t.file === file.relativePath);
           return (
-            <button
+            <div
               key={file.relativePath}
-              onClick={() => playFrom(file)}
               className={cn(
-                "flex min-h-[48px] w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover",
+                "flex min-h-[48px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
                 i > 0 && "border-t border-edge"
               )}
             >
-              <span className="w-6 shrink-0 text-center font-mono text-[11px] text-muted">
-                {isPlayingThis ? (
-                  <span className="text-primary">▶</span>
-                ) : (
-                  i + 1
-                )}
-              </span>
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate text-sm",
-                  isCurrent ? "text-primary" : "text-secondary"
-                )}
+              <button
+                onClick={() => playFrom(file)}
+                className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
               >
-                {file.name.replace(/\.[^.]+$/, "")}
-              </span>
-              <span className="shrink-0 font-mono text-[11px] text-muted">
-                {formatBytes(file.size)}
-              </span>
-            </button>
+                <span className="w-6 shrink-0 text-center font-mono text-[11px] text-muted">
+                  {isPlayingThis ? (
+                    <span className="text-primary">▶</span>
+                  ) : (
+                    i + 1
+                  )}
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-sm",
+                    isCurrent ? "text-primary" : "text-secondary"
+                  )}
+                >
+                  {file.name.replace(/\.[^.]+$/, "")}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] text-muted">
+                  {formatBytes(file.size)}
+                </span>
+              </button>
+              {track && <AddToQueueButton track={track} />}
+            </div>
           );
         })}
       </div>
@@ -250,10 +257,37 @@ export default function ListenPage() {
   const showAlbums = filter === "albums" || filter === "all";
   const showSingles = filter === "singles" || filter === "all";
 
+  const allPlayable = useMemo<Track[]>(() => {
+    if (!data) return [];
+    const fromAlbums = data.folders.flatMap((f) => tracksOf(f));
+    const fromRoot = data.rootFiles
+      .filter((f) => isPlayable(f.name))
+      .map((f) => ({
+        file: f.relativePath,
+        title: f.name.replace(/\.[^.]+$/, ""),
+      }));
+    return [...fromAlbums, ...fromRoot];
+  }, [data]);
+
   return (
     <div className="space-y-1">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-primary">Listen</h1>
+        {allPlayable.length > 0 && (
+          <button
+            onClick={() => player.playShuffle(allPlayable)}
+            className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="16,3 21,3 21,8" />
+              <line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21,16 21,21 16,21" />
+              <line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+            Shuffle
+          </button>
+        )}
       </div>
 
       <StickyLibraryChrome
@@ -318,30 +352,36 @@ export default function ListenPage() {
             {singles.map((file, i) => {
               const isCurrent = player.track?.file === file.relativePath;
               const isPlayingThis = isCurrent && player.playing;
+              const track = singleTracks[i]!;
               return (
-                <button
+                <div
                   key={file.relativePath}
-                  onClick={() => player.play(singleTracks[i], singleTracks)}
                   className={cn(
-                    "flex min-h-[48px] w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover",
+                    "flex min-h-[48px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
                     i > 0 && "border-t border-edge"
                   )}
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-elevated text-secondary">
-                    {isPlayingThis ? "❚❚" : "▶"}
-                  </span>
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-sm",
-                      isCurrent ? "text-primary" : "text-secondary"
-                    )}
+                  <button
+                    onClick={() => player.play(track, singleTracks)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
                   >
-                    {file.name.replace(/\.[^.]+$/, "")}
-                  </span>
-                  <span className="shrink-0 font-mono text-[11px] text-muted">
-                    {formatBytes(file.size)}
-                  </span>
-                </button>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-elevated text-secondary">
+                      {isPlayingThis ? "❚❚" : "▶"}
+                    </span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-sm",
+                        isCurrent ? "text-primary" : "text-secondary"
+                      )}
+                    >
+                      {file.name.replace(/\.[^.]+$/, "")}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] text-muted">
+                      {formatBytes(file.size)}
+                    </span>
+                  </button>
+                  <AddToQueueButton track={track} />
+                </div>
               );
             })}
           </div>

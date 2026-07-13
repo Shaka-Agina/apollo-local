@@ -19,6 +19,7 @@ import {
   type LocalFolder,
 } from "@/hooks/useDownloads";
 import { usePlayer, type Track } from "@/components/player/PlayerProvider";
+import { AddToQueueButton } from "@/components/player/QueuePanel";
 import { audioUrl } from "@/hooks/useDownloads";
 
 type Tab = "downloaded" | "shared";
@@ -172,31 +173,42 @@ function DownloadedTab() {
 
       {showSingles && singles.length > 0 && (
         <div className="mt-4 overflow-hidden rounded-lg border border-edge bg-surface">
-          {singles.map((file, i) => (
-            <button
-              key={file.relativePath}
-              onClick={() =>
-                player.play(
-                  { file: file.relativePath, title: file.name },
-                  singles.map((f) => ({
-                    file: f.relativePath,
-                    title: f.name.replace(/\.[^.]+$/, ""),
-                  }))
-                )
-              }
-              className={cn(
-                "flex min-h-[48px] w-full items-center gap-3 px-3 py-2 text-left hover:bg-hover",
-                i > 0 && "border-t border-edge"
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate text-sm text-secondary">
-                {file.name}
-              </span>
-              <span className="font-mono text-[11px] text-muted">
-                {formatBytes(file.size)}
-              </span>
-            </button>
-          ))}
+          {singles.map((file, i) => {
+            const track = {
+              file: file.relativePath,
+              title: file.name.replace(/\.[^.]+$/, ""),
+            };
+            return (
+              <div
+                key={file.relativePath}
+                className={cn(
+                  "flex min-h-[48px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
+                  i > 0 && "border-t border-edge"
+                )}
+              >
+                <button
+                  onClick={() =>
+                    player.play(
+                      track,
+                      singles.map((f) => ({
+                        file: f.relativePath,
+                        title: f.name.replace(/\.[^.]+$/, ""),
+                      }))
+                    )
+                  }
+                  className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-secondary">
+                    {file.name}
+                  </span>
+                  <span className="font-mono text-[11px] text-muted">
+                    {formatBytes(file.size)}
+                  </span>
+                </button>
+                <AddToQueueButton track={track} />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

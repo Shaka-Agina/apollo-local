@@ -66,29 +66,17 @@ export function StickyLibraryChrome({
 
   return (
     <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-base/95 px-4 pb-3 pt-1 backdrop-blur-md sm:-mx-6 sm:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {filter !== "albums" && (
-            <button
-              onClick={() => onFilter("albums")}
-              aria-label="Clear filter"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-edge text-secondary hover:bg-hover hover:text-primary"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
-                <line x1="6" y1="6" x2="18" y2="18" />
-                <line x1="18" y1="6" x2="6" y2="18" />
-              </svg>
-            </button>
-          )}
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-edge">
           {pills.map((p) => (
             <button
               key={p.id}
               onClick={() => onFilter(p.id)}
               className={cn(
-                "h-8 shrink-0 rounded-full px-3.5 font-mono text-[11px] uppercase tracking-wider transition-colors",
+                "h-10 flex-1 font-mono text-[11px] uppercase tracking-widest transition-colors",
                 filter === p.id
-                  ? "bg-accent text-base"
-                  : "bg-surface text-secondary hover:bg-hover hover:text-primary"
+                  ? "bg-hover text-primary"
+                  : "text-muted hover:text-secondary"
               )}
             >
               {p.label}
@@ -98,7 +86,7 @@ export function StickyLibraryChrome({
         <button
           onClick={onToggleSearch}
           aria-label="Search"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-secondary hover:bg-hover hover:text-primary"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-edge text-secondary hover:bg-hover hover:text-primary"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
             <circle cx="11" cy="11" r="7" />
