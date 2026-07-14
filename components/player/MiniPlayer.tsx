@@ -108,7 +108,7 @@ export function MiniPlayer() {
               </svg>
             ) : (
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                <path d="M8 5.5v13a.5.5 0 0 0 .77.42l10-6.5a.5.5 0 0 0 0-.84l-10-6.5A.5.5 0 0 0 8 5.5z" />
+                <path d="M9 5.5v13a.5.5 0 0 0 .78.41l9.5-6.5a.5.5 0 0 0 0-.82L9.78 5.09A.5.5 0 0 0 9 5.5z" />
               </svg>
             )}
           </button>

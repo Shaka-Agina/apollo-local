@@ -112,8 +112,8 @@ export function FullPlayer({
             <rect x="14" y="5" width="4" height="14" rx="1" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" className="ml-1 h-7 w-7" fill="currentColor">
-            <path d="M8 5.5v13a.5.5 0 0 0 .77.42l10-6.5a.5.5 0 0 0 0-.84l-10-6.5A.5.5 0 0 0 8 5.5z" />
+          <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor">
+            <path d="M9 5.5v13a.5.5 0 0 0 .78.41l9.5-6.5a.5.5 0 0 0 0-.82L9.78 5.09A.5.5 0 0 0 9 5.5z" />
           </svg>
         )}
       </button>
@@ -175,8 +175,8 @@ export function FullPlayer({
             <rect x="14" y="5" width="4" height="14" rx="1" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" className="ml-0.5 h-6 w-6" fill="currentColor">
-            <path d="M8 5.5v13a.5.5 0 0 0 .77.42l10-6.5a.5.5 0 0 0 0-.84l-10-6.5A.5.5 0 0 0 8 5.5z" />
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
+            <path d="M9 5.5v13a.5.5 0 0 0 .78.41l9.5-6.5a.5.5 0 0 0 0-.82L9.78 5.09A.5.5 0 0 0 9 5.5z" />
           </svg>
         )}
       </button>
