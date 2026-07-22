@@ -7,6 +7,13 @@ export interface LocalFile {
   relativePath: string;
   size: number;
   modifiedAt: string;
+  /** Embedded tags (filled when loading album detail). */
+  title?: string;
+  artist?: string;
+  album?: string;
+  trackNumber?: number;
+  duration?: number;
+  bitrate?: number;
 }
 
 export interface AlbumMeta {
@@ -392,6 +399,42 @@ export async function scanDownloadsLibrary(
   return { folders: entry.folders, rootFiles: entry.rootFiles };
 }
 
+async function enrichAudioTags(
+  folderAbs: string,
+  files: LocalFile[]
+): Promise<LocalFile[]> {
+  const { parseFile } = await import("music-metadata");
+  return Promise.all(
+    files.map(async (file) => {
+      if (!AUDIO_EXT.test(file.name)) return file;
+      try {
+        const meta = await parseFile(path.join(folderAbs, file.name), {
+          duration: true,
+          skipCovers: true,
+        });
+        const common = meta.common;
+        const format = meta.format;
+        return {
+          ...file,
+          title: common.title?.trim() || undefined,
+          artist:
+            common.artist?.trim() ||
+            common.albumartist?.trim() ||
+            undefined,
+          album: common.album?.trim() || undefined,
+          trackNumber: common.track?.no ?? undefined,
+          duration: format.duration ?? undefined,
+          bitrate: format.bitrate
+            ? Math.round(format.bitrate / 1000)
+            : undefined,
+        };
+      } catch {
+        return file;
+      }
+    })
+  );
+}
+
 /** Full album (with files) for detail view. */
 export async function loadAlbumFolder(
   downloadsDir: string,
@@ -405,7 +448,7 @@ export async function loadAlbumFolder(
   const relParts = relativePath.split(/[\\/]/).filter(Boolean);
   const { files: raw } = await listDirectEntries(folderAbs);
   const meta = await readMeta(folderAbs);
-  const files: LocalFile[] = raw.map((f) => ({
+  let files: LocalFile[] = raw.map((f) => ({
     name: f.name,
     relativePath: toRel(...relParts, f.name),
     size: f.size,
@@ -414,17 +457,30 @@ export async function loadAlbumFolder(
   const audio = files.filter((f) => AUDIO_EXT.test(f.name));
   if (audio.length === 0) return null;
 
+  files = await enrichAudioTags(folderAbs, files);
+
+  // Prefer tag track order when available.
+  files = [...files].sort((a, b) => {
+    const an = a.trackNumber ?? Number.MAX_SAFE_INTEGER;
+    const bn = b.trackNumber ?? Number.MAX_SAFE_INTEGER;
+    if (an !== bn) return an - bn;
+    return a.name.localeCompare(b.name);
+  });
+
   const newest = files.reduce(
     (max, f) => (f.modifiedAt > max ? f.modifiedAt : max),
     files[0]?.modifiedAt ?? new Date(0).toISOString()
   );
   const albumName = relParts[relParts.length - 1]!;
+  const tagArtist = files.find((f) => f.artist)?.artist;
+  const tagAlbum = files.find((f) => f.album)?.album;
   const artist =
     meta?.artist ??
+    tagArtist ??
     (relParts.length >= 2 ? relParts[relParts.length - 2]! : null);
 
   return {
-    name: meta?.title ?? albumName,
+    name: meta?.title ?? tagAlbum ?? albumName,
     relativePath: toRel(...relParts),
     artist,
     files,

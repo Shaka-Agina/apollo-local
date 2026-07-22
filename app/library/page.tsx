@@ -71,9 +71,10 @@ function SharedTab() {
 function tracksOf(folder: LocalFolder): Track[] {
   return folder.files.filter((f) => isPlayable(f.name)).map((f) => ({
     file: f.relativePath,
-    title: f.name.replace(/\.[^.]+$/, ""),
-    artist: folder.artist ?? folder.meta?.artist ?? folder.name,
+    title: f.title || f.name.replace(/\.[^.]+$/, ""),
+    artist: f.artist ?? folder.artist ?? folder.meta?.artist ?? folder.name,
     artwork: folder.cover ? audioUrl(folder.cover) : undefined,
+    sizeBytes: f.size,
   }));
 }
 
@@ -104,14 +105,15 @@ function DownloadedTab() {
       list = list.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
-          (f.artist ?? "").toLowerCase().includes(q)
+          (f.artist ?? "").toLowerCase().includes(q) ||
+          (f.meta?.title ?? "").toLowerCase().includes(q) ||
+          (f.meta?.artist ?? "").toLowerCase().includes(q)
       );
     }
-    return [...list].sort((a, b) =>
-      sort === "recent"
-        ? b.addedAt.localeCompare(a.addedAt)
-        : a.name.localeCompare(b.name)
-    );
+    return [...list].sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name);
+      return b.addedAt.localeCompare(a.addedAt);
+    });
   }, [listing.data, search, sort]);
 
   const artists = useMemo(() => {
@@ -173,6 +175,7 @@ function DownloadedTab() {
         onSearch={setSearch}
         showSearch={showSearch}
         onToggleSearch={() => setShowSearch((v) => !v)}
+        filters={["albums", "artists", "liked"]}
       />
 
       {filter === "albums" && folders.length === 0 && (

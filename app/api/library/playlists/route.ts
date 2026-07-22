@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPlaylist, listPlaylists } from "@/lib/collections";
 
-/**
- * Playlist API scaffold — storage + list/create ready.
- * Full playlist UI comes in a follow-up.
- */
-
 // GET /api/library/playlists
 export async function GET() {
   const playlists = await listPlaylists();

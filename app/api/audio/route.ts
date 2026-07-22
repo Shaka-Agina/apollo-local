@@ -3,6 +3,11 @@ import { createReadStream, promises as fs } from "fs";
 import { Readable } from "stream";
 import { slskd } from "@/lib/slskd";
 import { resolveUnderDownloads } from "@/lib/local-library";
+import {
+  parseStreamQuality,
+  shouldTranscode,
+} from "@/lib/stream-quality";
+import { ensureDataSaverCache, ffmpegAvailable } from "@/lib/transcode";
 
 const MIME: Record<string, string> = {
   mp3: "audio/mpeg",
@@ -49,6 +54,55 @@ async function resolveLocalPath(fileParam: string): Promise<string | null> {
   );
 }
 
+function serveFile(
+  localPath: string,
+  mime: string,
+  size: number,
+  range: string | null,
+  extraHeaders: Record<string, string> = {}
+) {
+  const headers: Record<string, string> = {
+    "Content-Type": mime,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": mime.startsWith("image/")
+      ? "private, max-age=3600"
+      : "private, max-age=300",
+    ...extraHeaders,
+  };
+
+  if (range) {
+    const match = /bytes=(\d*)-(\d*)/.exec(range);
+    const start = match?.[1] ? parseInt(match[1], 10) : 0;
+    const end = match?.[2] ? parseInt(match[2], 10) : size - 1;
+
+    if (start >= size || end >= size || start > end) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${size}` },
+      });
+    }
+
+    const stream = Readable.toWeb(
+      createReadStream(localPath, { start, end })
+    ) as ReadableStream;
+
+    return new NextResponse(stream, {
+      status: 206,
+      headers: {
+        ...headers,
+        "Content-Range": `bytes ${start}-${end}/${size}`,
+        "Content-Length": String(end - start + 1),
+      },
+    });
+  }
+
+  const stream = Readable.toWeb(createReadStream(localPath)) as ReadableStream;
+  return new NextResponse(stream, {
+    status: 200,
+    headers: { ...headers, "Content-Length": String(size) },
+  });
+}
+
 export async function GET(req: NextRequest) {
   const file = req.nextUrl.searchParams.get("file");
   if (!file) {
@@ -76,44 +130,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
+  const quality = parseStreamQuality(req.nextUrl.searchParams.get("quality"));
   const range = req.headers.get("range");
-  const headers: Record<string, string> = {
-    "Content-Type": mime,
-    "Accept-Ranges": "bytes",
-    "Cache-Control": mime.startsWith("image/")
-      ? "private, max-age=3600"
-      : "no-store",
-  };
+  const isImage = mime.startsWith("image/");
 
-  if (range) {
-    const match = /bytes=(\d*)-(\d*)/.exec(range);
-    const start = match?.[1] ? parseInt(match[1], 10) : 0;
-    const end = match?.[2] ? parseInt(match[2], 10) : stat.size - 1;
-
-    if (start >= stat.size || end >= stat.size || start > end) {
-      return new NextResponse(null, {
-        status: 416,
-        headers: { "Content-Range": `bytes */${stat.size}` },
+  if (
+    !isImage &&
+    shouldTranscode(ext, quality) &&
+    (await ffmpegAvailable())
+  ) {
+    try {
+      const cached = await ensureDataSaverCache(localPath, stat.mtimeMs);
+      const cachedStat = await fs.stat(cached);
+      return serveFile(cached, "audio/ogg", cachedStat.size, range, {
+        "X-Apollo-Quality": "data-saver",
+        "X-Apollo-Original-Size": String(stat.size),
+        "X-Apollo-Original-Format": ext,
       });
+    } catch {
+      // Fall through to original if ffmpeg fails mid-encode.
     }
-
-    const stream = Readable.toWeb(
-      createReadStream(localPath, { start, end })
-    ) as ReadableStream;
-
-    return new NextResponse(stream, {
-      status: 206,
-      headers: {
-        ...headers,
-        "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-        "Content-Length": String(end - start + 1),
-      },
-    });
   }
 
-  const stream = Readable.toWeb(createReadStream(localPath)) as ReadableStream;
-  return new NextResponse(stream, {
-    status: 200,
-    headers: { ...headers, "Content-Length": String(stat.size) },
+  return serveFile(localPath, mime, stat.size, range, {
+    "X-Apollo-Quality":
+      !isImage && shouldTranscode(ext, quality) ? "original-fallback" : quality,
+    "X-Apollo-Original-Size": String(stat.size),
+    "X-Apollo-Original-Format": ext,
   });
 }

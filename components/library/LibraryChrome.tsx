@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { audioUrl } from "@/hooks/useDownloads";
 import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
+import type { LibraryFilter, LibrarySort } from "@/lib/ui-prefs";
 
-export type LibraryFilter = "albums" | "artists" | "liked";
-export type LibrarySort = "recent" | "name";
+export type { LibraryFilter, LibrarySort };
 
 /** Fallback static class when prefs aren't mounted (SSR). */
 export const ALBUM_GRID_CLASS =
@@ -66,6 +66,14 @@ export function Artwork({
   );
 }
 
+const FILTER_PILLS: { id: LibraryFilter; label: string }[] = [
+  { id: "albums", label: "Albums" },
+  { id: "artists", label: "Artists" },
+  { id: "liked", label: "Liked" },
+  { id: "playlists", label: "Lists" },
+  { id: "played", label: "Played" },
+];
+
 export function StickyLibraryChrome({
   filter,
   onFilter,
@@ -75,6 +83,7 @@ export function StickyLibraryChrome({
   onSearch,
   showSearch,
   onToggleSearch,
+  filters,
 }: {
   filter: LibraryFilter;
   onFilter: (f: LibraryFilter) => void;
@@ -84,23 +93,31 @@ export function StickyLibraryChrome({
   onSearch: (q: string) => void;
   showSearch: boolean;
   onToggleSearch: () => void;
+  /** Subset of pills (defaults to all). */
+  filters?: LibraryFilter[];
 }) {
-  const pills: { id: LibraryFilter; label: string }[] = [
-    { id: "albums", label: "Albums" },
-    { id: "artists", label: "Artists" },
-    { id: "liked", label: "Liked" },
-  ];
+  const pills = FILTER_PILLS.filter(
+    (p) => !filters || filters.includes(p.id)
+  );
+  const sortLabel =
+    sort === "recent" ? "Recents" : sort === "played" ? "Played" : "Name";
+
+  const cycleSort = () => {
+    if (sort === "recent") onSort("name");
+    else if (sort === "name") onSort("played");
+    else onSort("recent");
+  };
 
   return (
     <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-base px-4 pb-3 pt-1 shadow-[0_1px_0_0_var(--border)] sm:-mx-6 sm:px-6">
       <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-edge">
+        <div className="flex min-w-0 flex-1 overflow-x-auto rounded-lg border border-edge">
           {pills.map((p) => (
             <button
               key={p.id}
               onClick={() => onFilter(p.id)}
               className={cn(
-                "h-10 flex-1 font-mono text-[11px] uppercase tracking-widest transition-colors",
+                "h-10 shrink-0 px-3 font-mono text-[11px] uppercase tracking-widest transition-colors",
                 filter === p.id
                   ? "bg-hover text-primary"
                   : "text-muted hover:text-secondary"
@@ -113,7 +130,10 @@ export function StickyLibraryChrome({
         <button
           onClick={onToggleSearch}
           aria-label="Search"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-edge text-secondary hover:bg-hover hover:text-primary"
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-edge hover:bg-hover hover:text-primary",
+            showSearch ? "text-primary" : "text-secondary"
+          )}
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5}>
             <circle cx="11" cy="11" r="7" />
@@ -126,7 +146,7 @@ export function StickyLibraryChrome({
         <input
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          placeholder="Search your music"
+          placeholder="Search artists, albums, tracks…"
           autoFocus
           autoComplete="off"
           spellCheck={false}
@@ -134,17 +154,19 @@ export function StickyLibraryChrome({
         />
       )}
 
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => onSort(sort === "recent" ? "name" : "recent")}
-          className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-secondary hover:text-primary"
-        >
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}>
-            <path d="M8 6v12M8 6l-3 3M8 6l3 3M16 18V6M16 18l-3-3M16 18l3-3" />
-          </svg>
-          {sort === "recent" ? "Recents" : "Name"}
-        </button>
-      </div>
+      {(filter === "albums" || filter === "artists") && (
+        <div className="flex items-center justify-between">
+          <button
+            onClick={cycleSort}
+            className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-secondary hover:text-primary"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <path d="M8 6v12M8 6l-3 3M8 6l3 3M16 18V6M16 18l-3-3M16 18l3-3" />
+            </svg>
+            {sortLabel}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -170,7 +192,6 @@ export function AlbumGridCard({
         name={title}
         className="aspect-square w-full shrink-0 rounded-md shadow-sm transition-opacity group-hover:opacity-90"
       />
-      {/* Fixed text block so long titles don't stretch the row */}
       <div className="mt-2 flex h-[3.25rem] flex-col overflow-hidden">
         <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-primary">
           {title}

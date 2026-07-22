@@ -8,6 +8,12 @@ export interface LocalFile {
   relativePath: string;
   size: number;
   modifiedAt: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  trackNumber?: number;
+  duration?: number;
+  bitrate?: number;
 }
 
 export interface AlbumMeta {

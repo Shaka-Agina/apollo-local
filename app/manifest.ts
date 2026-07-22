@@ -4,9 +4,12 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Apollo",
     short_name: "Apollo",
-    description: "Soulseek client",
-    start_url: "/search",
+    description: "Soulseek client + music player",
+    start_url: "/listen",
     display: "standalone",
+    display_override: ["standalone", "browser"],
+    categories: ["music", "entertainment"],
+
     orientation: "portrait",
     background_color: "#111111",
     theme_color: "#111111",

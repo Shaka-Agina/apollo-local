@@ -3,6 +3,7 @@ import { Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppShell } from "@/components/layout/AppShell";
+import { PwaRegister } from "@/components/PwaRegister";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -45,6 +46,7 @@ export default function RootLayout({
       <body className="font-sans">
         <Providers>
           <AppShell>{children}</AppShell>
+          <PwaRegister />
         </Providers>
       </body>
     </html>

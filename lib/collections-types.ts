@@ -5,6 +5,8 @@ export interface TrackRef {
   title: string;
   artist?: string;
   artwork?: string;
+  /** Original file size in bytes (optional, for player info). */
+  sizeBytes?: number;
 }
 
 export interface LikedTrack extends TrackRef {
@@ -24,8 +26,13 @@ export interface Playlist {
   tracks: PlaylistTrack[];
 }
 
+export interface RecentlyPlayedTrack extends TrackRef {
+  playedAt: string;
+}
+
 export interface CollectionsStore {
   version: 1;
   likes: LikedTrack[];
   playlists: Playlist[];
+  recentlyPlayed?: RecentlyPlayedTrack[];
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePlayer } from "./PlayerProvider";
 import { SeekBar } from "./SeekBar";
 import { LikeButton } from "./LikeButton";
+import { PlayerMenu } from "./PlayerMenu";
 import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
 import { usePlayerChrome } from "@/components/prefs/PlayerChromeProvider";
 import { cn, formatDuration } from "@/lib/utils";
@@ -223,6 +224,7 @@ export function FullPlayer({
         </span>
         <div className="flex items-center gap-1">
           <LikeButton track={track} className="h-10 w-10" />
+          <PlayerMenu track={track} />
           <button
             onClick={onOpenQueue}
             aria-label="Open queue"

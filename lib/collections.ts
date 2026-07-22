@@ -5,6 +5,8 @@ import type {
   CollectionsStore,
   LikedTrack,
   Playlist,
+  PlaylistTrack,
+  RecentlyPlayedTrack,
   TrackRef,
 } from "./collections-types";
 
@@ -13,10 +15,12 @@ export type {
   LikedTrack,
   Playlist,
   PlaylistTrack,
+  RecentlyPlayedTrack,
   TrackRef,
 } from "./collections-types";
 
 const STORE_FILE = ".apollo-collections.json";
+const MAX_RECENTLY_PLAYED = 100;
 
 function storePath(): string {
   return path.join(
@@ -26,7 +30,7 @@ function storePath(): string {
 }
 
 function emptyStore(): CollectionsStore {
-  return { version: 1, likes: [], playlists: [] };
+  return { version: 1, likes: [], playlists: [], recentlyPlayed: [] };
 }
 
 export async function readCollections(): Promise<CollectionsStore> {
@@ -37,6 +41,9 @@ export async function readCollections(): Promise<CollectionsStore> {
       version: 1,
       likes: Array.isArray(parsed.likes) ? parsed.likes : [],
       playlists: Array.isArray(parsed.playlists) ? parsed.playlists : [],
+      recentlyPlayed: Array.isArray(parsed.recentlyPlayed)
+        ? parsed.recentlyPlayed
+        : [],
     };
   } catch {
     return emptyStore();
@@ -76,6 +83,7 @@ export async function toggleLike(
     title: track.title,
     artist: track.artist,
     artwork: track.artwork,
+    sizeBytes: track.sizeBytes,
     likedAt: new Date().toISOString(),
   });
   await writeCollections(store);
@@ -94,6 +102,7 @@ export async function setLiked(
       title: track.title,
       artist: track.artist,
       artwork: track.artwork,
+      sizeBytes: track.sizeBytes,
       likedAt: new Date().toISOString(),
     };
     if (idx >= 0) store.likes[idx] = entry;
@@ -112,7 +121,11 @@ export async function listPlaylists(): Promise<Playlist[]> {
   );
 }
 
-/** Scaffold for upcoming playlist UI. */
+export async function getPlaylist(id: string): Promise<Playlist | null> {
+  const store = await readCollections();
+  return store.playlists.find((p) => p.id === id) ?? null;
+}
+
 export async function createPlaylist(input: {
   name: string;
   description?: string;
@@ -130,4 +143,122 @@ export async function createPlaylist(input: {
   store.playlists.push(playlist);
   await writeCollections(store);
   return playlist;
+}
+
+export async function updatePlaylist(
+  id: string,
+  patch: { name?: string; description?: string | null }
+): Promise<Playlist | null> {
+  const store = await readCollections();
+  const playlist = store.playlists.find((p) => p.id === id);
+  if (!playlist) return null;
+  if (patch.name != null) playlist.name = patch.name.trim() || playlist.name;
+  if (patch.description !== undefined) {
+    playlist.description =
+      patch.description === null || patch.description === ""
+        ? undefined
+        : patch.description.trim();
+  }
+  playlist.updatedAt = new Date().toISOString();
+  await writeCollections(store);
+  return playlist;
+}
+
+export async function deletePlaylist(id: string): Promise<boolean> {
+  const store = await readCollections();
+  const idx = store.playlists.findIndex((p) => p.id === id);
+  if (idx < 0) return false;
+  store.playlists.splice(idx, 1);
+  await writeCollections(store);
+  return true;
+}
+
+export async function addTrackToPlaylist(
+  id: string,
+  track: TrackRef
+): Promise<Playlist | null> {
+  const store = await readCollections();
+  const playlist = store.playlists.find((p) => p.id === id);
+  if (!playlist) return null;
+  if (playlist.tracks.some((t) => t.file === track.file)) {
+    return playlist;
+  }
+  const entry: PlaylistTrack = {
+    file: track.file,
+    title: track.title,
+    artist: track.artist,
+    artwork: track.artwork,
+    sizeBytes: track.sizeBytes,
+    addedAt: new Date().toISOString(),
+  };
+  playlist.tracks.push(entry);
+  playlist.updatedAt = new Date().toISOString();
+  await writeCollections(store);
+  return playlist;
+}
+
+export async function removeTrackFromPlaylist(
+  id: string,
+  file: string
+): Promise<Playlist | null> {
+  const store = await readCollections();
+  const playlist = store.playlists.find((p) => p.id === id);
+  if (!playlist) return null;
+  const before = playlist.tracks.length;
+  playlist.tracks = playlist.tracks.filter((t) => t.file !== file);
+  if (playlist.tracks.length === before) return playlist;
+  playlist.updatedAt = new Date().toISOString();
+  await writeCollections(store);
+  return playlist;
+}
+
+/** Reorder tracks by providing the full ordered list of file paths. */
+export async function reorderPlaylistTracks(
+  id: string,
+  orderedFiles: string[]
+): Promise<Playlist | null> {
+  const store = await readCollections();
+  const playlist = store.playlists.find((p) => p.id === id);
+  if (!playlist) return null;
+  const byFile = new Map(playlist.tracks.map((t) => [t.file, t]));
+  const next: PlaylistTrack[] = [];
+  for (const file of orderedFiles) {
+    const t = byFile.get(file);
+    if (t) {
+      next.push(t);
+      byFile.delete(file);
+    }
+  }
+  // Keep any tracks not listed (shouldn't happen) at the end.
+  for (const t of byFile.values()) next.push(t);
+  playlist.tracks = next;
+  playlist.updatedAt = new Date().toISOString();
+  await writeCollections(store);
+  return playlist;
+}
+
+export async function listRecentlyPlayed(): Promise<RecentlyPlayedTrack[]> {
+  const store = await readCollections();
+  return [...(store.recentlyPlayed ?? [])].sort((a, b) =>
+    b.playedAt.localeCompare(a.playedAt)
+  );
+}
+
+export async function recordPlay(
+  track: TrackRef
+): Promise<RecentlyPlayedTrack[]> {
+  const store = await readCollections();
+  const list = store.recentlyPlayed ?? [];
+  const filtered = list.filter((t) => t.file !== track.file);
+  filtered.unshift({
+    file: track.file,
+    title: track.title,
+    artist: track.artist,
+    artwork: track.artwork,
+    sizeBytes: track.sizeBytes,
+    playedAt: new Date().toISOString(),
+  });
+  store.recentlyPlayed = filtered.slice(0, MAX_RECENTLY_PLAYED);
+  await writeCollections(store);
+  return store.recentlyPlayed;
 }

@@ -1,5 +1,15 @@
 /** Client UI preferences — stored per browser/device in localStorage. */
 
+import type { StreamQuality } from "./stream-quality";
+
+export type LibraryFilter =
+  | "albums"
+  | "artists"
+  | "liked"
+  | "playlists"
+  | "played";
+export type LibrarySort = "recent" | "name" | "played";
+
 export interface UiPrefs {
   /** Album columns on phones (< sm). */
   mobileGridCols: number;
@@ -26,6 +36,19 @@ export interface UiPrefs {
   focusShowProgress: boolean;
   focusShowTimes: boolean;
   focusShowTitle: boolean;
+
+  /**
+   * Streaming quality over the network.
+   * data-saver (default): transcode lossless to Opus ~96 kbps.
+   * original: stream the file as stored.
+   */
+  streamQuality: StreamQuality;
+
+  /** Listen / Library chrome — sticky across visits. */
+  libraryFilter: LibraryFilter;
+  librarySort: LibrarySort;
+  libraryShowSearch: boolean;
+  librarySearch: string;
 }
 
 export const UI_PREFS_KEY = "apollo-ui-prefs";
@@ -49,12 +72,28 @@ export const DEFAULT_UI_PREFS: UiPrefs = {
   focusShowProgress: false,
   focusShowTimes: false,
   focusShowTitle: false,
+
+  streamQuality: "data-saver",
+
+  libraryFilter: "albums",
+  librarySort: "recent",
+  libraryShowSearch: false,
+  librarySearch: "",
 };
 
 export const GRID_COLS = {
   mobile: { min: 2, max: 5 },
   desktop: { min: 3, max: 10 },
 } as const;
+
+const LIBRARY_FILTERS: LibraryFilter[] = [
+  "albums",
+  "artists",
+  "liked",
+  "playlists",
+  "played",
+];
+const LIBRARY_SORTS: LibrarySort[] = ["recent", "name", "played"];
 
 export function clampGridCols(
   value: number,
@@ -66,10 +105,23 @@ export function clampGridCols(
 
 export function mergeUiPrefs(partial: Partial<UiPrefs> | null | undefined): UiPrefs {
   const base = { ...DEFAULT_UI_PREFS, ...(partial ?? {}) };
+  const streamQuality =
+    base.streamQuality === "original" ? "original" : "data-saver";
+  const libraryFilter = LIBRARY_FILTERS.includes(base.libraryFilter)
+    ? base.libraryFilter
+    : DEFAULT_UI_PREFS.libraryFilter;
+  const librarySort = LIBRARY_SORTS.includes(base.librarySort)
+    ? base.librarySort
+    : DEFAULT_UI_PREFS.librarySort;
   return {
     ...base,
     mobileGridCols: clampGridCols(base.mobileGridCols, "mobile"),
     desktopGridCols: clampGridCols(base.desktopGridCols, "desktop"),
+    streamQuality,
+    libraryFilter,
+    librarySort,
+    libraryShowSearch: !!base.libraryShowSearch,
+    librarySearch: typeof base.librarySearch === "string" ? base.librarySearch : "",
   };
 }
 

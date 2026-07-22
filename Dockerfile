@@ -21,9 +21,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs \
+RUN apk add --no-cache ffmpeg \
+  && addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs \
-  && mkdir -p /data /app/downloads /slskd-data \
+  && mkdir -p /data /app/downloads /slskd-data /data/transcode \
   && chown -R nextjs:nodejs /data /app/downloads /slskd-data
 
 COPY --from=builder /app/public ./public

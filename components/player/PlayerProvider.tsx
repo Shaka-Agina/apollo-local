@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
+import type { StreamQuality } from "@/lib/stream-quality";
 
 export interface Track {
   /** Path passed to /api/audio — the track's identity. */
@@ -16,6 +18,8 @@ export interface Track {
   artist?: string;
   /** Cover art URL (used by the lockscreen / media session). */
   artwork?: string;
+  /** Original file size in bytes (for player info menu). */
+  sizeBytes?: number;
 }
 
 export type RepeatMode = "off" | "all" | "one";
@@ -31,6 +35,7 @@ interface PlayerState {
   shuffle: boolean;
   hasNext: boolean;
   hasPrevious: boolean;
+  streamQuality: StreamQuality;
   /** Plays a track. Pass a queue to enable next/previous within it. */
   play: (track: Track, queue?: Track[]) => void;
   /** Append to the up-next list (starts playback if nothing is playing). */
@@ -66,8 +71,42 @@ function shuffleArray<T>(items: T[]): T[] {
   return a;
 }
 
+function audioSrc(file: string, quality: StreamQuality): string {
+  return `/api/audio?file=${encodeURIComponent(file)}&quality=${quality}`;
+}
+
+function recordPlayClient(track: Track) {
+  void fetch("/api/library/recently-played", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      track: {
+        file: track.file,
+        title: track.title,
+        artist: track.artist,
+        artwork: track.artwork,
+        sizeBytes: track.sizeBytes,
+      },
+    }),
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((body) => {
+      if (body?.tracks && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("apollo:recently-played", { detail: body.tracks })
+        );
+      }
+    })
+    .catch(() => {});
+}
+
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const { prefs } = useUiPrefs();
+  const qualityRef = useRef<StreamQuality>(prefs.streamQuality);
+  qualityRef.current = prefs.streamQuality;
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [queue, setQueue] = useState<Track[]>([]);
   const [index, setIndex] = useState(-1);
   const [playing, setPlaying] = useState(false);
@@ -92,8 +131,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio) return;
     setCurrentTime(0);
     setDuration(0);
-    audio.src = `/api/audio?file=${encodeURIComponent(t.file)}`;
+    audio.src = audioSrc(t.file, qualityRef.current);
     void audio.play();
+    recordPlayClient(t);
+    // Hint the service worker to cache this remote-friendly stream.
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready
+        .then((reg) => {
+          reg.active?.postMessage({
+            type: "CACHE_AUDIO",
+            url: audioSrc(t.file, "data-saver"),
+          });
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const goTo = useCallback(
@@ -138,6 +189,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const audio = new Audio();
+    audio.preload = "auto";
     audioRef.current = audio;
 
     const onTime = () => setCurrentTime(audio.currentTime);
@@ -162,6 +214,71 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener("ended", onEnded);
     };
   }, []);
+
+  // Reload current track if quality preference changes mid-play.
+  useEffect(() => {
+    const audio = audioRef.current;
+    const t = queueRef.current[indexRef.current];
+    if (!audio || !t || !audio.src) return;
+    try {
+      const u = new URL(audio.src, window.location.origin);
+      if (u.searchParams.get("quality") === prefs.streamQuality) return;
+    } catch {
+      /* continue */
+    }
+    const next = audioSrc(t.file, prefs.streamQuality);
+    const wasPlaying = !audio.paused;
+    const time = audio.currentTime;
+    audio.src = next;
+    const onMeta = () => {
+      try {
+        audio.currentTime = time;
+      } catch {
+        /* ignore */
+      }
+      if (wasPlaying) void audio.play();
+      audio.removeEventListener("loadedmetadata", onMeta);
+    };
+    audio.addEventListener("loadedmetadata", onMeta);
+    if (wasPlaying) void audio.play();
+  }, [prefs.streamQuality]);
+
+  // Wake Lock while playing (keeps screen awake on supported mobile browsers).
+  useEffect(() => {
+    let cancelled = false;
+    const request = async () => {
+      if (!playing) {
+        await wakeLockRef.current?.release().catch(() => {});
+        wakeLockRef.current = null;
+        return;
+      }
+      if (!("wakeLock" in navigator)) return;
+      try {
+        const sentinel = await navigator.wakeLock.request("screen");
+        if (cancelled) {
+          await sentinel.release();
+          return;
+        }
+        wakeLockRef.current = sentinel;
+        sentinel.addEventListener("release", () => {
+          if (wakeLockRef.current === sentinel) wakeLockRef.current = null;
+        });
+      } catch {
+        /* unsupported / denied */
+      }
+    };
+    void request();
+    const onVis = () => {
+      if (document.visibilityState === "visible" && playing) void request();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      void wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [playing]);
 
   const play = useCallback(
     (next: Track, newQueue?: Track[]) => {
@@ -320,8 +437,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist ?? "Apollo",
+      album: "Apollo",
       artwork: track.artwork
-        ? [{ src: track.artwork, sizes: "512x512" }]
+        ? [
+            { src: track.artwork, sizes: "512x512", type: "image/jpeg" },
+            { src: track.artwork, sizes: "256x256", type: "image/jpeg" },
+          ]
         : undefined,
     });
   }, [track]);
@@ -329,13 +450,49 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator))
       return;
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+  }, [playing]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator))
+      return;
+    if (!duration || !isFinite(duration)) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate: 1,
+        position: Math.min(currentTime, duration),
+      });
+    } catch {
+      /* some browsers reject invalid position */
+    }
+  }, [currentTime, duration, playing]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator))
+      return;
     const ms = navigator.mediaSession;
-    ms.setActionHandler("play", () => audioRef.current?.play());
-    ms.setActionHandler("pause", () => audioRef.current?.pause());
+    ms.setActionHandler("play", () => {
+      void audioRef.current?.play();
+    });
+    ms.setActionHandler("pause", () => {
+      audioRef.current?.pause();
+    });
     ms.setActionHandler("previoustrack", previous);
     ms.setActionHandler("nexttrack", next);
     ms.setActionHandler("seekto", (e) => {
       if (e.seekTime != null) seek(e.seekTime);
+    });
+    ms.setActionHandler("seekbackward", (e) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      seek(Math.max(0, audio.currentTime - (e.seekOffset ?? 10)));
+    });
+    ms.setActionHandler("seekforward", (e) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      const offset = e.seekOffset ?? 10;
+      seek(Math.min(audio.duration || Infinity, audio.currentTime + offset));
     });
     return () => {
       ms.setActionHandler("play", null);
@@ -343,6 +500,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       ms.setActionHandler("previoustrack", null);
       ms.setActionHandler("nexttrack", null);
       ms.setActionHandler("seekto", null);
+      ms.setActionHandler("seekbackward", null);
+      ms.setActionHandler("seekforward", null);
     };
   }, [previous, next, seek]);
 
@@ -368,6 +527,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           index > 0 ||
           (repeat === "all" && queue.length > 1) ||
           (shuffle && queue.length > 1),
+        streamQuality: prefs.streamQuality,
         play,
         addToQueue,
         removeFromQueue,

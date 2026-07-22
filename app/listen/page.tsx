@@ -4,16 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlayer, type Track } from "@/components/player/PlayerProvider";
 import { AddToQueueButton } from "@/components/player/QueuePanel";
 import { LikeButton } from "@/components/player/LikeButton";
+import { AddToPlaylistButton } from "@/components/player/AddToPlaylistButton";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { cn, formatBytes } from "@/lib/utils";
+import { Dialog } from "@/components/ui/Dialog";
+import { cn, formatBytes, formatDuration } from "@/lib/utils";
 import {
   AlbumGrid,
   AlbumGridCard,
   Artwork,
   StickyLibraryChrome,
-  type LibraryFilter,
-  type LibrarySort,
 } from "@/components/library/LibraryChrome";
 import {
   audioUrl,
@@ -26,15 +26,27 @@ import {
   type LocalFolderSummary,
 } from "@/hooks/useDownloads";
 import { useLikes } from "@/hooks/useLikes";
+import { useRecentlyPlayed } from "@/hooks/useRecentlyPlayed";
+import {
+  useCreatePlaylist,
+  useDeletePlaylist,
+  usePlaylists,
+  useRemoveFromPlaylist,
+  useReorderPlaylist,
+  useUpdatePlaylist,
+} from "@/hooks/usePlaylists";
+import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
+import type { Playlist } from "@/lib/collections-types";
 
 const PAGE_SIZE = 36;
 
 function tracksOf(folder: LocalFolder): Track[] {
   return folder.files.filter((f) => isPlayable(f.name)).map((f) => ({
     file: f.relativePath,
-    title: f.name.replace(/\.[^.]+$/, ""),
-    artist: folder.artist ?? folder.meta?.artist ?? folder.name,
+    title: f.title || f.name.replace(/\.[^.]+$/, ""),
+    artist: f.artist ?? folder.artist ?? folder.meta?.artist ?? folder.name,
     artwork: folder.cover ? audioUrl(folder.cover) : undefined,
+    sizeBytes: f.size,
   }));
 }
 
@@ -115,6 +127,14 @@ function AlbumDetail({
                 Play
               </button>
             )}
+            {tracks.length > 1 && (
+              <button
+                onClick={() => player.playShuffle(tracks)}
+                className="flex h-9 items-center gap-2 rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+              >
+                Shuffle
+              </button>
+            )}
             <button
               onClick={() =>
                 fetchMeta.mutate({
@@ -159,6 +179,7 @@ function AlbumDetail({
               const isCurrent = player.track?.file === file.relativePath;
               const isPlayingThis = isCurrent && player.playing;
               const track = tracks.find((t) => t.file === file.relativePath);
+              const title = file.title || file.name.replace(/\.[^.]+$/, "");
               return (
                 <div
                   key={file.relativePath}
@@ -175,22 +196,40 @@ function AlbumDetail({
                       {isPlayingThis ? (
                         <span className="text-primary">▶</span>
                       ) : (
-                        i + 1
+                        file.trackNumber ?? i + 1
                       )}
                     </span>
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 truncate text-sm",
-                        isCurrent ? "text-primary" : "text-secondary"
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cn(
+                          "block truncate text-sm",
+                          isCurrent ? "text-primary" : "text-secondary"
+                        )}
+                      >
+                        {title}
+                      </span>
+                      {(file.artist || file.bitrate || file.duration) && (
+                        <span className="block truncate font-mono text-[10px] text-muted">
+                          {[
+                            file.artist && file.artist !== artist
+                              ? file.artist
+                              : null,
+                            file.bitrate ? `${file.bitrate} kbps` : null,
+                            file.duration
+                              ? formatDuration(file.duration)
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
                       )}
-                    >
-                      {file.name.replace(/\.[^.]+$/, "")}
                     </span>
                     <span className="shrink-0 font-mono text-[11px] text-muted">
                       {formatBytes(file.size)}
                     </span>
                   </button>
                   {track && <LikeButton track={track} />}
+                  {track && <AddToPlaylistButton track={track} />}
                   {track && <AddToQueueButton track={track} />}
                 </div>
               );
@@ -235,6 +274,29 @@ function ArtistDetail({
   onBack: () => void;
   onOpenAlbum: (path: string) => void;
 }) {
+  const player = usePlayer();
+  const [shuffleBusy, setShuffleBusy] = useState(false);
+
+  const shuffleArtist = async () => {
+    setShuffleBusy(true);
+    try {
+      const loaded = await Promise.all(
+        group.albums.map(async (f) => {
+          const res = await fetch(
+            `/api/library/downloads?album=${encodeURIComponent(f.relativePath)}`
+          );
+          const body = await res.json();
+          if (!res.ok) return [] as Track[];
+          return tracksOf(body.folder as LocalFolder);
+        })
+      );
+      const tracks = loaded.flat();
+      if (tracks.length > 0) player.playShuffle(tracks);
+    } finally {
+      setShuffleBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-5 pb-8">
       <button
@@ -253,7 +315,7 @@ function ArtistDetail({
           name={group.name}
           className="h-28 w-28 shrink-0 rounded-full sm:h-36 sm:w-36"
         />
-        <div className="flex min-w-0 flex-col justify-end gap-1">
+        <div className="flex min-w-0 flex-col justify-end gap-2">
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
             Artist
           </p>
@@ -263,6 +325,13 @@ function ArtistDetail({
           <p className="font-mono text-[11px] text-muted">
             {group.albums.length} album{group.albums.length === 1 ? "" : "s"}
           </p>
+          <button
+            onClick={() => void shuffleArtist()}
+            disabled={shuffleBusy}
+            className="mt-1 flex h-9 w-fit items-center gap-2 rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
+          >
+            {shuffleBusy ? "…" : "Shuffle"}
+          </button>
         </div>
       </div>
 
@@ -281,20 +350,325 @@ function ArtistDetail({
   );
 }
 
+function PlaylistDetail({
+  playlist,
+  onBack,
+}: {
+  playlist: Playlist;
+  onBack: () => void;
+}) {
+  const player = usePlayer();
+  const updatePlaylist = useUpdatePlaylist();
+  const deletePlaylist = useDeletePlaylist();
+  const removeTrack = useRemoveFromPlaylist();
+  const reorder = useReorderPlaylist();
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [name, setName] = useState(playlist.name);
+
+  const queue = useMemo<Track[]>(
+    () =>
+      playlist.tracks.map((t) => ({
+        file: t.file,
+        title: t.title,
+        artist: t.artist,
+        artwork: t.artwork,
+        sizeBytes: t.sizeBytes,
+      })),
+    [playlist.tracks]
+  );
+
+  const move = (from: number, dir: -1 | 1) => {
+    const to = from + dir;
+    if (to < 0 || to >= playlist.tracks.length) return;
+    const files = playlist.tracks.map((t) => t.file);
+    const tmp = files[from]!;
+    files[from] = files[to]!;
+    files[to] = tmp;
+    reorder.mutate({ playlistId: playlist.id, orderedFiles: files });
+  };
+
+  return (
+    <div className="space-y-5 pb-8">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-secondary hover:text-primary"
+      >
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <polyline points="15,5 8,12 15,19" />
+        </svg>
+        Playlists
+      </button>
+
+      <div className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+          Playlist
+        </p>
+        <h2 className="text-xl font-bold text-primary sm:text-2xl">
+          {playlist.name}
+        </h2>
+        <p className="font-mono text-[11px] text-muted">
+          {playlist.tracks.length} track
+          {playlist.tracks.length === 1 ? "" : "s"}
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {queue.length > 0 && (
+            <button
+              onClick={() => player.play(queue[0]!, queue)}
+              className="flex h-9 items-center rounded-full bg-accent px-4 font-mono text-[11px] uppercase tracking-widest text-base"
+            >
+              Play
+            </button>
+          )}
+          {queue.length > 1 && (
+            <button
+              onClick={() => player.playShuffle(queue)}
+              className="flex h-9 items-center rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+            >
+              Shuffle
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setName(playlist.name);
+              setRenameOpen(true);
+            }}
+            className="flex h-9 items-center rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+          >
+            Rename
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`Delete “${playlist.name}”?`)) {
+                deletePlaylist.mutate(playlist.id, { onSuccess: onBack });
+              }
+            }}
+            className="flex h-9 items-center rounded-full border border-edge px-4 font-mono text-[11px] uppercase tracking-widest text-destructive hover:bg-hover"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-edge bg-surface">
+        {queue.length === 0 && (
+          <p className="px-3 py-4 text-sm text-muted">
+            Empty — add tracks from an album or the player menu.
+          </p>
+        )}
+        {queue.map((track, i) => {
+          const isCurrent = player.track?.file === track.file;
+          const isPlayingThis = isCurrent && player.playing;
+          return (
+            <div
+              key={`${track.file}-${i}`}
+              className={cn(
+                "flex min-h-[52px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
+                i > 0 && "border-t border-edge"
+              )}
+            >
+              <div className="flex shrink-0 flex-col">
+                <button
+                  type="button"
+                  aria-label="Move up"
+                  disabled={i === 0}
+                  onClick={() => move(i, -1)}
+                  className="px-1 text-[10px] text-muted disabled:opacity-20"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move down"
+                  disabled={i === queue.length - 1}
+                  onClick={() => move(i, 1)}
+                  className="px-1 text-[10px] text-muted disabled:opacity-20"
+                >
+                  ▼
+                </button>
+              </div>
+              <button
+                onClick={() => player.play(track, queue)}
+                className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-elevated">
+                  {track.artwork ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={track.artwork}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-secondary">
+                      {isPlayingThis ? "❚❚" : "▶"}
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      "block truncate text-sm",
+                      isCurrent ? "text-primary" : "text-secondary"
+                    )}
+                  >
+                    {track.title}
+                  </span>
+                  <span className="block truncate font-mono text-[11px] text-muted">
+                    {track.artist ?? "Unknown artist"}
+                  </span>
+                </span>
+              </button>
+              <LikeButton track={track} />
+              <AddToQueueButton track={track} />
+              <button
+                type="button"
+                aria-label="Remove from playlist"
+                onClick={() =>
+                  removeTrack.mutate({
+                    playlistId: playlist.id,
+                    file: track.file,
+                  })
+                }
+                className="flex h-10 w-10 items-center justify-center text-muted hover:text-destructive"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <Dialog open={renameOpen} onClose={() => setRenameOpen(false)} title="Rename playlist">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            updatePlaylist.mutate(
+              { id: playlist.id, name },
+              { onSuccess: () => setRenameOpen(false) }
+            );
+          }}
+        >
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="h-10 w-full rounded-lg border border-edge bg-surface px-3 text-sm text-primary"
+            autoFocus
+          />
+          <button
+            type="submit"
+            disabled={!name.trim() || updatePlaylist.isPending}
+            className="h-10 w-full rounded-lg border border-edge bg-hover font-mono text-[11px] uppercase tracking-widest text-primary disabled:opacity-40"
+          >
+            Save
+          </button>
+        </form>
+      </Dialog>
+    </div>
+  );
+}
+
+function TrackList({
+  tracks,
+  emptyTitle,
+  emptyHint,
+}: {
+  tracks: Track[];
+  emptyTitle: string;
+  emptyHint: string;
+}) {
+  const player = usePlayer();
+  if (tracks.length === 0) {
+    return <EmptyState title={emptyTitle} hint={emptyHint} />;
+  }
+  return (
+    <div className="overflow-hidden rounded-lg border border-edge bg-surface">
+      {tracks.map((track, i) => {
+        const isCurrent = player.track?.file === track.file;
+        const isPlayingThis = isCurrent && player.playing;
+        return (
+          <div
+            key={track.file}
+            className={cn(
+              "flex min-h-[52px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
+              i > 0 && "border-t border-edge"
+            )}
+          >
+            <button
+              onClick={() => player.play(track, tracks)}
+              className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-elevated">
+                {track.artwork ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={track.artwork}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-secondary">
+                    {isPlayingThis ? "❚❚" : "▶"}
+                  </span>
+                )}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    "block truncate text-sm",
+                    isCurrent ? "text-primary" : "text-secondary"
+                  )}
+                >
+                  {track.title}
+                </span>
+                <span className="block truncate font-mono text-[11px] text-muted">
+                  {track.artist ?? "Unknown artist"}
+                </span>
+              </span>
+            </button>
+            <LikeButton track={track} />
+            <AddToPlaylistButton track={track} />
+            <AddToQueueButton track={track} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ListenPage() {
   const listing = useDownloadsListing();
   const likesQuery = useLikes();
+  const playlistsQuery = usePlaylists();
+  const playedQuery = useRecentlyPlayed();
+  const createPlaylist = useCreatePlaylist();
   const player = usePlayer();
-  const [filter, setFilter] = useState<LibraryFilter>("albums");
-  const [sort, setSort] = useState<LibrarySort>("recent");
-  const [search, setSearch] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
+  const { prefs, setPrefs, ready } = useUiPrefs();
+
+  const filter = prefs.libraryFilter;
+  const sort = prefs.librarySort;
+  const search = prefs.librarySearch;
+  const showSearch = prefs.libraryShowSearch;
+
   const [selectedAlbum, setSelectedAlbum] = useState<string | null>(null);
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(
+    null
+  );
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [shuffleBusy, setShuffleBusy] = useState(false);
+  const [newPlaylistOpen, setNewPlaylistOpen] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState("");
 
   const data = listing.data;
+
+  const playedAtByFile = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of playedQuery.data?.tracks ?? []) {
+      map.set(t.file, t.playedAt);
+    }
+    return map;
+  }, [playedQuery.data?.tracks]);
 
   const folders = useMemo(() => {
     if (!data) return [];
@@ -304,16 +678,35 @@ export default function ListenPage() {
       list = list.filter(
         (f) =>
           f.name.toLowerCase().includes(q) ||
-          (f.artist ?? "").toLowerCase().includes(q)
+          (f.artist ?? "").toLowerCase().includes(q) ||
+          (f.meta?.title ?? "").toLowerCase().includes(q) ||
+          (f.meta?.artist ?? "").toLowerCase().includes(q) ||
+          (f.meta?.genre ?? "").toLowerCase().includes(q)
       );
     }
-    list = [...list].sort((a, b) =>
-      sort === "recent"
-        ? b.addedAt.localeCompare(a.addedAt)
-        : a.name.localeCompare(b.name)
-    );
+    list = [...list].sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "played") {
+        // Album “last played” ≈ newest played track under that album path.
+        const aPlay = Math.max(
+          0,
+          ...[...playedAtByFile.entries()]
+            .filter(([file]) => file.startsWith(a.relativePath))
+            .map(([, at]) => Date.parse(at) || 0)
+        );
+        const bPlay = Math.max(
+          0,
+          ...[...playedAtByFile.entries()]
+            .filter(([file]) => file.startsWith(b.relativePath))
+            .map(([, at]) => Date.parse(at) || 0)
+        );
+        if (aPlay !== bPlay) return bPlay - aPlay;
+        return b.addedAt.localeCompare(a.addedAt);
+      }
+      return b.addedAt.localeCompare(a.addedAt);
+    });
     return list;
-  }, [data, search, sort]);
+  }, [data, search, sort, playedAtByFile]);
 
   const artists = useMemo(() => {
     const map = new Map<string, ArtistGroup>();
@@ -332,15 +725,15 @@ export default function ListenPage() {
     list = list.map((g) => ({
       ...g,
       albums: [...g.albums].sort((a, b) =>
-        sort === "recent"
-          ? b.addedAt.localeCompare(a.addedAt)
-          : a.name.localeCompare(b.name)
+        sort === "name"
+          ? a.name.localeCompare(b.name)
+          : b.addedAt.localeCompare(a.addedAt)
       ),
     }));
     list.sort((a, b) =>
-      sort === "recent"
-        ? (b.albums[0]?.addedAt ?? "").localeCompare(a.albums[0]?.addedAt ?? "")
-        : a.name.localeCompare(b.name)
+      sort === "name"
+        ? a.name.localeCompare(b.name)
+        : (b.albums[0]?.addedAt ?? "").localeCompare(a.albums[0]?.addedAt ?? "")
     );
     const q = search.trim().toLowerCase();
     if (q) list = list.filter((a) => a.name.toLowerCase().includes(q));
@@ -365,9 +758,42 @@ export default function ListenPage() {
         title: t.title,
         artist: t.artist,
         artwork: t.artwork,
+        sizeBytes: t.sizeBytes,
       })),
     [likedTracks]
   );
+
+  const playedAsQueue = useMemo<Track[]>(() => {
+    const tracks = playedQuery.data?.tracks ?? [];
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? tracks.filter(
+          (t) =>
+            t.title.toLowerCase().includes(q) ||
+            (t.artist ?? "").toLowerCase().includes(q)
+        )
+      : tracks;
+    return filtered.map((t) => ({
+      file: t.file,
+      title: t.title,
+      artist: t.artist,
+      artwork: t.artwork,
+      sizeBytes: t.sizeBytes,
+    }));
+  }, [playedQuery.data?.tracks, search]);
+
+  const playlists = useMemo(() => {
+    const list = playlistsQuery.data?.playlists ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((p) => p.name.toLowerCase().includes(q));
+  }, [playlistsQuery.data?.playlists, search]);
+
+  const selectedPlaylist =
+    selectedPlaylistId != null
+      ? playlistsQuery.data?.playlists.find((p) => p.id === selectedPlaylistId) ??
+        null
+      : null;
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -376,6 +802,7 @@ export default function ListenPage() {
   useEffect(() => {
     setSelectedAlbum(null);
     setSelectedArtist(null);
+    setSelectedPlaylistId(null);
   }, [filter]);
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -387,7 +814,7 @@ export default function ListenPage() {
     if (!el) return;
     if (filter === "albums" && !hasMoreAlbums) return;
     if (filter === "artists" && !hasMoreArtists) return;
-    if (filter === "liked") return;
+    if (filter !== "albums" && filter !== "artists") return;
     const io = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
@@ -418,6 +845,10 @@ export default function ListenPage() {
       if (likedAsQueue.length > 0) player.playShuffle(likedAsQueue);
       return;
     }
+    if (filter === "played") {
+      if (playedAsQueue.length > 0) player.playShuffle(playedAsQueue);
+      return;
+    }
     if (!data) return;
     setShuffleBusy(true);
     try {
@@ -444,6 +875,14 @@ export default function ListenPage() {
     }
   };
 
+  if (!ready) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner />
+      </div>
+    );
+  }
+
   if (selectedSummary) {
     return (
       <AlbumDetail
@@ -463,53 +902,78 @@ export default function ListenPage() {
     );
   }
 
+  if (selectedPlaylist) {
+    return (
+      <PlaylistDetail
+        playlist={selectedPlaylist}
+        onBack={() => setSelectedPlaylistId(null)}
+      />
+    );
+  }
+
   const canShuffle =
     (filter === "liked" && likedAsQueue.length > 0) ||
-    (filter !== "liked" && folders.length > 0);
+    (filter === "played" && playedAsQueue.length > 0) ||
+    ((filter === "albums" || filter === "artists") && folders.length > 0);
 
   const empty =
     (filter === "albums" && folders.length === 0) ||
     (filter === "artists" && artists.length === 0) ||
-    (filter === "liked" && likedTracks.length === 0);
+    (filter === "liked" && likedTracks.length === 0) ||
+    (filter === "playlists" && playlists.length === 0) ||
+    (filter === "played" && playedAsQueue.length === 0);
 
   return (
     <div className="space-y-1">
       <div className="mb-2 flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-primary">Listen</h1>
-        {canShuffle && (
-          <button
-            onClick={() => void runShuffle()}
-            disabled={shuffleBusy}
-            className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16,3 21,3 21,8" />
-              <line x1="4" y1="20" x2="21" y2="3" />
-              <polyline points="21,16 21,21 16,21" />
-              <line x1="15" y1="15" x2="21" y2="21" />
-              <line x1="4" y1="4" x2="9" y2="9" />
-            </svg>
-            {shuffleBusy ? "…" : "Shuffle"}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {filter === "playlists" && (
+            <button
+              onClick={() => setNewPlaylistOpen(true)}
+              className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+            >
+              New
+            </button>
+          )}
+          {canShuffle && (
+            <button
+              onClick={() => void runShuffle()}
+              disabled={shuffleBusy}
+              className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16,3 21,3 21,8" />
+                <line x1="4" y1="20" x2="21" y2="3" />
+                <polyline points="21,16 21,21 16,21" />
+                <line x1="15" y1="15" x2="21" y2="21" />
+                <line x1="4" y1="4" x2="9" y2="9" />
+              </svg>
+              {shuffleBusy ? "…" : "Shuffle"}
+            </button>
+          )}
+        </div>
       </div>
 
       <StickyLibraryChrome
         filter={filter}
-        onFilter={setFilter}
+        onFilter={(f) => setPrefs({ libraryFilter: f })}
         sort={sort}
-        onSort={setSort}
+        onSort={(s) => setPrefs({ librarySort: s })}
         search={search}
-        onSearch={setSearch}
+        onSearch={(q) => setPrefs({ librarySearch: q })}
         showSearch={showSearch}
-        onToggleSearch={() => setShowSearch((v) => !v)}
+        onToggleSearch={() =>
+          setPrefs({ libraryShowSearch: !showSearch })
+        }
       />
 
-      {listing.isLoading && filter !== "liked" && (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
-      )}
+      {listing.isLoading &&
+        (filter === "albums" || filter === "artists") && (
+          <div className="flex justify-center py-16">
+            <Spinner />
+          </div>
+        )}
 
       {filter === "liked" && likesQuery.isLoading && (
         <div className="flex justify-center py-16">
@@ -517,30 +981,54 @@ export default function ListenPage() {
         </div>
       )}
 
-      {listing.error && filter !== "liked" && (
+      {filter === "playlists" && playlistsQuery.isLoading && (
+        <div className="flex justify-center py-16">
+          <Spinner />
+        </div>
+      )}
+
+      {filter === "played" && playedQuery.isLoading && (
+        <div className="flex justify-center py-16">
+          <Spinner />
+        </div>
+      )}
+
+      {listing.error && (filter === "albums" || filter === "artists") && (
         <EmptyState title="Cannot read music" hint={listing.error.message} />
       )}
 
-      {empty && !listing.isLoading && !(filter === "liked" && likesQuery.isLoading) && (
-        <EmptyState
-          title={
-            search
-              ? "No matches"
-              : filter === "liked"
-                ? "No liked tracks yet"
-                : filter === "artists"
-                  ? "No artists yet"
-                  : "Nothing to play yet"
-          }
-          hint={
-            search
-              ? "Try a different search."
-              : filter === "liked"
-                ? "Tap the heart on a track to save it here."
-                : "Download some music and it will show up here."
-          }
-        />
-      )}
+      {empty &&
+        !listing.isLoading &&
+        !(filter === "liked" && likesQuery.isLoading) &&
+        !(filter === "playlists" && playlistsQuery.isLoading) &&
+        !(filter === "played" && playedQuery.isLoading) && (
+          <EmptyState
+            title={
+              search
+                ? "No matches"
+                : filter === "liked"
+                  ? "No liked tracks yet"
+                  : filter === "artists"
+                    ? "No artists yet"
+                    : filter === "playlists"
+                      ? "No playlists yet"
+                      : filter === "played"
+                        ? "Nothing played yet"
+                        : "Nothing to play yet"
+            }
+            hint={
+              search
+                ? "Try a different search."
+                : filter === "liked"
+                  ? "Tap the heart on a track to save it here."
+                  : filter === "playlists"
+                    ? "Tap New to create one, or add tracks from the player menu."
+                    : filter === "played"
+                      ? "Play something and it will show up here."
+                      : "Download some music and it will show up here."
+            }
+          />
+        )}
 
       {filter === "albums" && visibleFolders.length > 0 && (
         <>
@@ -592,59 +1080,89 @@ export default function ListenPage() {
         </>
       )}
 
-      {filter === "liked" && likedTracks.length > 0 && (
+      {filter === "liked" && likedAsQueue.length > 0 && (
+        <TrackList
+          tracks={likedAsQueue}
+          emptyTitle="No liked tracks yet"
+          emptyHint="Tap the heart on a track to save it here."
+        />
+      )}
+
+      {filter === "played" && playedAsQueue.length > 0 && (
+        <TrackList
+          tracks={playedAsQueue}
+          emptyTitle="Nothing played yet"
+          emptyHint="Play something and it will show up here."
+        />
+      )}
+
+      {filter === "playlists" && playlists.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-edge bg-surface">
-          {likedTracks.map((liked, i) => {
-            const track = likedAsQueue[i]!;
-            const isCurrent = player.track?.file === track.file;
-            const isPlayingThis = isCurrent && player.playing;
-            return (
-              <div
-                key={track.file}
-                className={cn(
-                  "flex min-h-[52px] w-full items-center gap-1 px-2 py-2 hover:bg-hover",
-                  i > 0 && "border-t border-edge"
-                )}
-              >
-                <button
-                  onClick={() => player.play(track, likedAsQueue)}
-                  className="flex min-w-0 flex-1 items-center gap-3 px-1 text-left"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-elevated">
-                    {track.artwork ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={track.artwork}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-secondary">
-                        {isPlayingThis ? "❚❚" : "▶"}
-                      </span>
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        "block truncate text-sm",
-                        isCurrent ? "text-primary" : "text-secondary"
-                      )}
-                    >
-                      {track.title}
-                    </span>
-                    <span className="block truncate font-mono text-[11px] text-muted">
-                      {track.artist ?? "Unknown artist"}
-                    </span>
-                  </span>
-                </button>
-                <LikeButton track={track} />
-                <AddToQueueButton track={track} />
-              </div>
-            );
-          })}
+          {playlists.map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setSelectedPlaylistId(p.id)}
+              className={cn(
+                "flex min-h-[56px] w-full items-center gap-3 px-3 text-left hover:bg-hover",
+                i > 0 && "border-t border-edge"
+              )}
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded bg-elevated font-mono text-sm text-muted">
+                {p.tracks.length}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-primary">
+                  {p.name}
+                </span>
+                <span className="block truncate font-mono text-[11px] text-muted">
+                  {p.tracks.length} track{p.tracks.length === 1 ? "" : "s"}
+                </span>
+              </span>
+            </button>
+          ))}
         </div>
       )}
+
+      <Dialog
+        open={newPlaylistOpen}
+        onClose={() => setNewPlaylistOpen(false)}
+        title="New playlist"
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = newPlaylistName.trim();
+            if (!name) return;
+            createPlaylist.mutate(
+              { name },
+              {
+                onSuccess: (data) => {
+                  setNewPlaylistName("");
+                  setNewPlaylistOpen(false);
+                  setSelectedPlaylistId(data.playlist.id);
+                },
+              }
+            );
+          }}
+        >
+          <input
+            value={newPlaylistName}
+            onChange={(e) => setNewPlaylistName(e.target.value)}
+            placeholder="Playlist name"
+            autoFocus
+            className="h-10 w-full rounded-lg border border-edge bg-surface px-3 text-sm text-primary placeholder:text-muted"
+          />
+          <button
+            type="submit"
+            disabled={!newPlaylistName.trim() || createPlaylist.isPending}
+            className="h-10 w-full rounded-lg border border-edge bg-hover font-mono text-[11px] uppercase tracking-widest text-primary disabled:opacity-40"
+          >
+            Create
+          </button>
+        </form>
+      </Dialog>
     </div>
   );
 }
