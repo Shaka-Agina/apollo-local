@@ -37,6 +37,9 @@ export interface UiPrefs {
   focusShowTimes: boolean;
   focusShowTitle: boolean;
 
+  /** When true, hide per-track file sizes in album track lists. Default off. */
+  hideTrackFileSize: boolean;
+
   /**
    * Streaming quality over the network.
    * data-saver (default): transcode lossless to Opus ~96 kbps.
@@ -72,6 +75,8 @@ export const DEFAULT_UI_PREFS: UiPrefs = {
   focusShowProgress: false,
   focusShowTimes: false,
   focusShowTitle: false,
+
+  hideTrackFileSize: false,
 
   streamQuality: "data-saver",
 
@@ -122,6 +127,7 @@ export function mergeUiPrefs(partial: Partial<UiPrefs> | null | undefined): UiPr
     librarySort,
     libraryShowSearch: !!base.libraryShowSearch,
     librarySearch: typeof base.librarySearch === "string" ? base.librarySearch : "",
+    hideTrackFileSize: !!base.hideTrackFileSize,
   };
 }
 

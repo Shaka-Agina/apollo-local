@@ -38,6 +38,9 @@ import {
 import { useUiPrefs } from "@/components/prefs/UiPrefsProvider";
 import type { Playlist } from "@/lib/collections-types";
 
+const ALBUM_ACTION_BTN =
+  "flex h-8 items-center gap-1.5 rounded-lg bg-hover px-3 font-mono text-[10px] uppercase tracking-widest text-secondary hover:text-primary disabled:opacity-50";
+
 const PAGE_SIZE = 36;
 
 function tracksOf(folder: LocalFolder): Track[] {
@@ -64,6 +67,7 @@ function AlbumDetail({
   onBack: () => void;
 }) {
   const player = usePlayer();
+  const { prefs } = useUiPrefs();
   const fetchMeta = useFetchAlbumMeta();
   const detail = useAlbumDetail(summary.relativePath);
   const folder = detail.data?.folder;
@@ -122,7 +126,7 @@ function AlbumDetail({
             {tracks.length > 0 && (
               <button
                 onClick={() => player.play(tracks[0]!, tracks)}
-                className="flex h-9 items-center gap-2 rounded-full bg-accent px-4 font-mono text-[11px] uppercase tracking-widest text-base hover:opacity-90"
+                className={ALBUM_ACTION_BTN}
               >
                 Play
               </button>
@@ -130,7 +134,7 @@ function AlbumDetail({
             {tracks.length > 1 && (
               <button
                 onClick={() => player.playShuffle(tracks)}
-                className="flex h-9 items-center gap-2 rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+                className={ALBUM_ACTION_BTN}
               >
                 Shuffle
               </button>
@@ -143,7 +147,7 @@ function AlbumDetail({
                 })
               }
               disabled={fetchMeta.isPending}
-              className="flex h-9 items-center gap-2 rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
+              className={ALBUM_ACTION_BTN}
             >
               {fetchMeta.isPending ? "Fetching…" : "Fetch cover"}
             </button>
@@ -224,9 +228,11 @@ function AlbumDetail({
                         </span>
                       )}
                     </span>
-                    <span className="shrink-0 font-mono text-[11px] text-muted">
-                      {formatBytes(file.size)}
-                    </span>
+                    {!prefs.hideTrackFileSize && (
+                      <span className="shrink-0 font-mono text-[11px] text-muted">
+                        {formatBytes(file.size)}
+                      </span>
+                    )}
                   </button>
                   {track && <LikeButton track={track} />}
                   {track && <AddToPlaylistButton track={track} />}
@@ -328,7 +334,7 @@ function ArtistDetail({
           <button
             onClick={() => void shuffleArtist()}
             disabled={shuffleBusy}
-            className="mt-1 flex h-9 w-fit items-center gap-2 rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
+            className={`mt-1 ${ALBUM_ACTION_BTN}`}
           >
             {shuffleBusy ? "…" : "Shuffle"}
           </button>
@@ -414,7 +420,7 @@ function PlaylistDetail({
           {queue.length > 0 && (
             <button
               onClick={() => player.play(queue[0]!, queue)}
-              className="flex h-9 items-center rounded-full bg-accent px-4 font-mono text-[11px] uppercase tracking-widest text-base"
+              className={ALBUM_ACTION_BTN}
             >
               Play
             </button>
@@ -422,7 +428,7 @@ function PlaylistDetail({
           {queue.length > 1 && (
             <button
               onClick={() => player.playShuffle(queue)}
-              className="flex h-9 items-center rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+              className={ALBUM_ACTION_BTN}
             >
               Shuffle
             </button>
@@ -432,7 +438,7 @@ function PlaylistDetail({
               setName(playlist.name);
               setRenameOpen(true);
             }}
-            className="flex h-9 items-center rounded-full border border-edge bg-surface px-4 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
+            className={ALBUM_ACTION_BTN}
           >
             Rename
           </button>
@@ -442,7 +448,7 @@ function PlaylistDetail({
                 deletePlaylist.mutate(playlist.id, { onSuccess: onBack });
               }
             }}
-            className="flex h-9 items-center rounded-full border border-edge px-4 font-mono text-[11px] uppercase tracking-widest text-destructive hover:bg-hover"
+            className={`${ALBUM_ACTION_BTN} text-destructive hover:text-destructive`}
           >
             Delete
           </button>
@@ -924,8 +930,8 @@ export default function ListenPage() {
     (filter === "played" && playedAsQueue.length === 0);
 
   return (
-    <div className="space-y-1">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-primary">Listen</h1>
         <div className="flex items-center gap-2">
           {filter === "playlists" && (
@@ -968,6 +974,7 @@ export default function ListenPage() {
         }
       />
 
+      <div className="mt-4 space-y-4">
       {listing.isLoading &&
         (filter === "albums" || filter === "artists") && (
           <div className="flex justify-center py-16">
@@ -1037,9 +1044,7 @@ export default function ListenPage() {
               <AlbumGridCard
                 key={folder.relativePath}
                 title={folder.name}
-                subtitle={
-                  folder.artist ? `Album · ${folder.artist}` : "Album"
-                }
+                subtitle={folder.artist ?? "Unknown artist"}
                 cover={folder.cover}
                 onClick={() => setSelectedAlbum(folder.relativePath)}
               />
@@ -1123,6 +1128,7 @@ export default function ListenPage() {
           ))}
         </div>
       )}
+      </div>
 
       <Dialog
         open={newPlaylistOpen}

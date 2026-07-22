@@ -123,6 +123,12 @@ export function AppearanceSetting() {
           max={GRID_COLS.desktop.max}
           onChange={(n) => set("desktopGridCols", n)}
         />
+        <ToggleRow
+          label="Hide track file size"
+          description="Hide MB sizes in album track lists — off by default"
+          checked={prefs.hideTrackFileSize}
+          onChange={(v) => set("hideTrackFileSize", v)}
+        />
       </Section>
 
       <Section

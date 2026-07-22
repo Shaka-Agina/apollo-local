@@ -55,11 +55,9 @@ export function FullPlayer({
 
   const focused = artFocus && prefs.focusHideChrome;
   const hideTabs = artFocus && prefs.focusHideTabBar;
-  const showFocusOverlay =
+  const showFocusBottomChrome =
     artFocus &&
-    (prefs.focusShowClock ||
-      prefs.focusShowTitle ||
-      prefs.focusShowTransport ||
+    (prefs.focusShowTransport ||
       prefs.focusShowProgress ||
       prefs.focusShowTimes);
 
@@ -258,49 +256,65 @@ export function FullPlayer({
       </div>
 
       {/* Artwork stage — centers in focus; sits above controls otherwise */}
-      <button
-        type="button"
-        onClick={() => setArtFocus((v) => !v)}
-        aria-label={artFocus ? "Show controls" : "Focus on artwork"}
+      <div
         className={cn(
-          "absolute inset-0 flex items-center justify-center px-8 transition-[padding] duration-300",
-          focused ? "pb-8 pt-8" : "pb-56 pt-20"
+          "absolute inset-0 flex flex-col items-center justify-center px-6 transition-[padding] duration-300",
+          focused ? "pb-8 pt-8" : "pb-52 pt-16"
         )}
       >
-        <div
-          className={cn(
-            "aspect-square overflow-hidden rounded-lg border bg-surface transition-all duration-300",
-            focused
-              ? "h-[min(72vmin,28rem)] w-[min(72vmin,28rem)] border-transparent"
-              : "h-[min(55vmin,20rem)] w-[min(55vmin,20rem)] border-edge"
-          )}
+        <button
+          type="button"
+          onClick={() => setArtFocus((v) => !v)}
+          aria-label={artFocus ? "Show controls" : "Focus on artwork"}
+          className="shrink-0"
         >
-          {track.artwork ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={track.artwork}
-              alt={track.title}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <svg
-                viewBox="0 0 24 24"
-                className="h-16 w-16 text-muted"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="8" cy="18" r="3" />
-                <path d="M11 18V4l8-2v13" />
-                <circle cx="16" cy="15" r="3" />
-              </svg>
-            </div>
-          )}
-        </div>
-      </button>
+          <div
+            className={cn(
+              "aspect-square overflow-hidden rounded-lg border bg-surface transition-all duration-300",
+              focused
+                ? "h-[min(72vmin,28rem)] w-[min(72vmin,28rem)] border-transparent"
+                : "h-[min(68vmin,26rem)] w-[min(68vmin,26rem)] border-edge"
+            )}
+          >
+            {track.artwork ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={track.artwork}
+                alt={track.title}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-16 w-16 text-muted"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="8" cy="18" r="3" />
+                  <path d="M11 18V4l8-2v13" />
+                  <circle cx="16" cy="15" r="3" />
+                </svg>
+              </div>
+            )}
+          </div>
+        </button>
+
+        {/* Focus title sits under the cover at center, not in the bottom dock */}
+        {artFocus && prefs.focusShowTitle && (
+          <div className="pointer-events-none mt-5 w-full max-w-[min(72vmin,28rem)] px-2 text-center">
+            <p className="truncate text-base font-semibold text-primary">
+              {track.title}
+            </p>
+            <p className="truncate font-mono text-xs text-secondary">
+              {track.artist ?? "—"}
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Focus overlays (optional) */}
       {artFocus && prefs.focusShowClock && (
@@ -309,18 +323,8 @@ export function FullPlayer({
         </div>
       )}
 
-      {artFocus && showFocusOverlay && (
+      {showFocusBottomChrome && (
         <div className="absolute inset-x-0 bottom-0 z-10 space-y-3 px-8 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4">
-          {prefs.focusShowTitle && (
-            <div className="text-center">
-              <p className="truncate text-base font-semibold text-primary">
-                {track.title}
-              </p>
-              <p className="truncate font-mono text-xs text-secondary">
-                {track.artist ?? "—"}
-              </p>
-            </div>
-          )}
           {prefs.focusShowProgress && seekBar}
           {prefs.focusShowTimes && (
             <div className="flex justify-between font-mono text-[11px] text-secondary">

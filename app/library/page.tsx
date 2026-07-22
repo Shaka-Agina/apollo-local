@@ -203,11 +203,7 @@ function DownloadedTab() {
             <AlbumGridCard
               key={folder.relativePath}
               title={folder.name}
-              subtitle={
-                folder.artist
-                  ? `Album · ${folder.artist}`
-                  : `${folder.trackCount} tracks`
-              }
+              subtitle={folder.artist ?? "Unknown artist"}
               cover={folder.cover}
               onClick={async () => {
                 try {

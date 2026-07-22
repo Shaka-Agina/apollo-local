@@ -100,12 +100,17 @@ export function StickyLibraryChrome({
     (p) => !filters || filters.includes(p.id)
   );
   const sortLabel =
-    sort === "recent" ? "Recents" : sort === "played" ? "Played" : "Name";
+    sort === "played"
+      ? "Recently played"
+      : sort === "name"
+        ? "Name"
+        : "Recently added";
 
   const cycleSort = () => {
-    if (sort === "recent") onSort("name");
-    else if (sort === "name") onSort("played");
-    else onSort("recent");
+    // Recently played → Name → Recently added → …
+    if (sort === "played") onSort("name");
+    else if (sort === "name") onSort("recent");
+    else onSort("played");
   };
 
   return (
@@ -192,8 +197,8 @@ export function AlbumGridCard({
         name={title}
         className="aspect-square w-full shrink-0 rounded-md shadow-sm transition-opacity group-hover:opacity-90"
       />
-      <div className="mt-2 flex h-[3.25rem] flex-col overflow-hidden">
-        <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-primary">
+      <div className="mt-2 min-w-0 overflow-hidden">
+        <p className="truncate text-[13px] font-semibold leading-snug text-primary">
           {title}
         </p>
         <p className="mt-0.5 truncate text-[12px] leading-tight text-secondary">
