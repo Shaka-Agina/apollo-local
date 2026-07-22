@@ -2,12 +2,7 @@
 
 import type { StreamQuality } from "./stream-quality";
 
-export type LibraryFilter =
-  | "albums"
-  | "artists"
-  | "liked"
-  | "playlists"
-  | "played";
+export type LibraryFilter = "albums" | "artists" | "liked" | "playlists";
 export type LibrarySort = "recent" | "name" | "played";
 
 export interface UiPrefs {
@@ -96,7 +91,6 @@ const LIBRARY_FILTERS: LibraryFilter[] = [
   "artists",
   "liked",
   "playlists",
-  "played",
 ];
 const LIBRARY_SORTS: LibrarySort[] = ["recent", "name", "played"];
 
@@ -112,8 +106,10 @@ export function mergeUiPrefs(partial: Partial<UiPrefs> | null | undefined): UiPr
   const base = { ...DEFAULT_UI_PREFS, ...(partial ?? {}) };
   const streamQuality =
     base.streamQuality === "original" ? "original" : "data-saver";
-  const libraryFilter = LIBRARY_FILTERS.includes(base.libraryFilter)
-    ? base.libraryFilter
+  // Migrate removed "played" tab → albums.
+  const rawFilter = base.libraryFilter as string;
+  const libraryFilter = LIBRARY_FILTERS.includes(rawFilter as LibraryFilter)
+    ? (rawFilter as LibraryFilter)
     : DEFAULT_UI_PREFS.libraryFilter;
   const librarySort = LIBRARY_SORTS.includes(base.librarySort)
     ? base.librarySort

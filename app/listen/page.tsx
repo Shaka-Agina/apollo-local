@@ -28,7 +28,6 @@ import {
 import { useLikes } from "@/hooks/useLikes";
 import { useRecentlyPlayed } from "@/hooks/useRecentlyPlayed";
 import {
-  useCreatePlaylist,
   useDeletePlaylist,
   usePlaylists,
   useRemoveFromPlaylist,
@@ -647,7 +646,6 @@ export default function ListenPage() {
   const likesQuery = useLikes();
   const playlistsQuery = usePlaylists();
   const playedQuery = useRecentlyPlayed();
-  const createPlaylist = useCreatePlaylist();
   const player = usePlayer();
   const { prefs, setPrefs, ready } = useUiPrefs();
 
@@ -663,8 +661,6 @@ export default function ListenPage() {
   );
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [shuffleBusy, setShuffleBusy] = useState(false);
-  const [newPlaylistOpen, setNewPlaylistOpen] = useState(false);
-  const [newPlaylistName, setNewPlaylistName] = useState("");
 
   const data = listing.data;
 
@@ -749,13 +745,25 @@ export default function ListenPage() {
   const likedTracks = useMemo(() => {
     const likes = likesQuery.data?.likes ?? [];
     const q = search.trim().toLowerCase();
-    if (!q) return likes;
-    return likes.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        (t.artist ?? "").toLowerCase().includes(q)
-    );
-  }, [likesQuery.data?.likes, search]);
+    let list = q
+      ? likes.filter(
+          (t) =>
+            t.title.toLowerCase().includes(q) ||
+            (t.artist ?? "").toLowerCase().includes(q)
+        )
+      : [...likes];
+    list = [...list].sort((a, b) => {
+      if (sort === "name") return a.title.localeCompare(b.title);
+      if (sort === "played") {
+        const aPlay = Date.parse(playedAtByFile.get(a.file) ?? "") || 0;
+        const bPlay = Date.parse(playedAtByFile.get(b.file) ?? "") || 0;
+        if (aPlay !== bPlay) return bPlay - aPlay;
+        return b.likedAt.localeCompare(a.likedAt);
+      }
+      return b.likedAt.localeCompare(a.likedAt);
+    });
+    return list;
+  }, [likesQuery.data?.likes, search, sort, playedAtByFile]);
 
   const likedAsQueue = useMemo<Track[]>(
     () =>
@@ -769,31 +777,30 @@ export default function ListenPage() {
     [likedTracks]
   );
 
-  const playedAsQueue = useMemo<Track[]>(() => {
-    const tracks = playedQuery.data?.tracks ?? [];
-    const q = search.trim().toLowerCase();
-    const filtered = q
-      ? tracks.filter(
-          (t) =>
-            t.title.toLowerCase().includes(q) ||
-            (t.artist ?? "").toLowerCase().includes(q)
-        )
-      : tracks;
-    return filtered.map((t) => ({
-      file: t.file,
-      title: t.title,
-      artist: t.artist,
-      artwork: t.artwork,
-      sizeBytes: t.sizeBytes,
-    }));
-  }, [playedQuery.data?.tracks, search]);
-
   const playlists = useMemo(() => {
     const list = playlistsQuery.data?.playlists ?? [];
     const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((p) => p.name.toLowerCase().includes(q));
-  }, [playlistsQuery.data?.playlists, search]);
+    let filtered = q
+      ? list.filter((p) => p.name.toLowerCase().includes(q))
+      : [...list];
+    filtered = [...filtered].sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "played") {
+        const aPlay = Math.max(
+          0,
+          ...a.tracks.map((t) => Date.parse(playedAtByFile.get(t.file) ?? "") || 0)
+        );
+        const bPlay = Math.max(
+          0,
+          ...b.tracks.map((t) => Date.parse(playedAtByFile.get(t.file) ?? "") || 0)
+        );
+        if (aPlay !== bPlay) return bPlay - aPlay;
+        return b.updatedAt.localeCompare(a.updatedAt);
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+    return filtered;
+  }, [playlistsQuery.data?.playlists, search, sort, playedAtByFile]);
 
   const selectedPlaylist =
     selectedPlaylistId != null
@@ -851,11 +858,20 @@ export default function ListenPage() {
       if (likedAsQueue.length > 0) player.playShuffle(likedAsQueue);
       return;
     }
-    if (filter === "played") {
-      if (playedAsQueue.length > 0) player.playShuffle(playedAsQueue);
+    if (filter === "playlists") {
+      const tracks = playlists.flatMap((p) =>
+        p.tracks.map((t) => ({
+          file: t.file,
+          title: t.title,
+          artist: t.artist,
+          artwork: t.artwork,
+          sizeBytes: t.sizeBytes,
+        }))
+      );
+      if (tracks.length > 0) player.playShuffle(tracks);
       return;
     }
-    if (!data) return;
+    if (!data || folders.length === 0) return;
     setShuffleBusy(true);
     try {
       const pool = [...folders];
@@ -880,6 +896,12 @@ export default function ListenPage() {
       setShuffleBusy(false);
     }
   };
+
+  const shuffleEnabled =
+    (filter === "liked" && likedAsQueue.length > 0) ||
+    (filter === "playlists" &&
+      playlists.some((p) => p.tracks.length > 0)) ||
+    ((filter === "albums" || filter === "artists") && folders.length > 0);
 
   if (!ready) {
     return (
@@ -917,48 +939,30 @@ export default function ListenPage() {
     );
   }
 
-  const canShuffle =
-    (filter === "liked" && likedAsQueue.length > 0) ||
-    (filter === "played" && playedAsQueue.length > 0) ||
-    ((filter === "albums" || filter === "artists") && folders.length > 0);
-
   const empty =
     (filter === "albums" && folders.length === 0) ||
     (filter === "artists" && artists.length === 0) ||
     (filter === "liked" && likedTracks.length === 0) ||
-    (filter === "playlists" && playlists.length === 0) ||
-    (filter === "played" && playedAsQueue.length === 0);
+    (filter === "playlists" && playlists.length === 0);
 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-primary">Listen</h1>
-        <div className="flex items-center gap-2">
-          {filter === "playlists" && (
-            <button
-              onClick={() => setNewPlaylistOpen(true)}
-              className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary"
-            >
-              New
-            </button>
-          )}
-          {canShuffle && (
-            <button
-              onClick={() => void runShuffle()}
-              disabled={shuffleBusy}
-              className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-50"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="16,3 21,3 21,8" />
-                <line x1="4" y1="20" x2="21" y2="3" />
-                <polyline points="21,16 21,21 16,21" />
-                <line x1="15" y1="15" x2="21" y2="21" />
-                <line x1="4" y1="4" x2="9" y2="9" />
-              </svg>
-              {shuffleBusy ? "…" : "Shuffle"}
-            </button>
-          )}
-        </div>
+        <button
+          onClick={() => void runShuffle()}
+          disabled={shuffleBusy || !shuffleEnabled}
+          className="flex h-9 items-center gap-2 rounded-lg border border-edge bg-surface px-3 font-mono text-[11px] uppercase tracking-widest text-secondary hover:bg-hover hover:text-primary disabled:opacity-40"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="16,3 21,3 21,8" />
+            <line x1="4" y1="20" x2="21" y2="3" />
+            <polyline points="21,16 21,21 16,21" />
+            <line x1="15" y1="15" x2="21" y2="21" />
+            <line x1="4" y1="4" x2="9" y2="9" />
+          </svg>
+          {shuffleBusy ? "…" : "Shuffle"}
+        </button>
       </div>
 
       <StickyLibraryChrome
@@ -974,7 +978,7 @@ export default function ListenPage() {
         }
       />
 
-      <div className="mt-4 space-y-4">
+      <div className="mt-6 space-y-4">
       {listing.isLoading &&
         (filter === "albums" || filter === "artists") && (
           <div className="flex justify-center py-16">
@@ -994,12 +998,6 @@ export default function ListenPage() {
         </div>
       )}
 
-      {filter === "played" && playedQuery.isLoading && (
-        <div className="flex justify-center py-16">
-          <Spinner />
-        </div>
-      )}
-
       {listing.error && (filter === "albums" || filter === "artists") && (
         <EmptyState title="Cannot read music" hint={listing.error.message} />
       )}
@@ -1007,8 +1005,7 @@ export default function ListenPage() {
       {empty &&
         !listing.isLoading &&
         !(filter === "liked" && likesQuery.isLoading) &&
-        !(filter === "playlists" && playlistsQuery.isLoading) &&
-        !(filter === "played" && playedQuery.isLoading) && (
+        !(filter === "playlists" && playlistsQuery.isLoading) && (
           <EmptyState
             title={
               search
@@ -1019,9 +1016,7 @@ export default function ListenPage() {
                     ? "No artists yet"
                     : filter === "playlists"
                       ? "No playlists yet"
-                      : filter === "played"
-                        ? "Nothing played yet"
-                        : "Nothing to play yet"
+                      : "Nothing to play yet"
             }
             hint={
               search
@@ -1029,10 +1024,8 @@ export default function ListenPage() {
                 : filter === "liked"
                   ? "Tap the heart on a track to save it here."
                   : filter === "playlists"
-                    ? "Tap New to create one, or add tracks from the player menu."
-                    : filter === "played"
-                      ? "Play something and it will show up here."
-                      : "Download some music and it will show up here."
+                    ? "Add tracks from the player menu or a song’s playlist button."
+                    : "Download some music and it will show up here."
             }
           />
         )}
@@ -1093,14 +1086,6 @@ export default function ListenPage() {
         />
       )}
 
-      {filter === "played" && playedAsQueue.length > 0 && (
-        <TrackList
-          tracks={playedAsQueue}
-          emptyTitle="Nothing played yet"
-          emptyHint="Play something and it will show up here."
-        />
-      )}
-
       {filter === "playlists" && playlists.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-edge bg-surface">
           {playlists.map((p, i) => (
@@ -1129,46 +1114,6 @@ export default function ListenPage() {
         </div>
       )}
       </div>
-
-      <Dialog
-        open={newPlaylistOpen}
-        onClose={() => setNewPlaylistOpen(false)}
-        title="New playlist"
-      >
-        <form
-          className="space-y-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const name = newPlaylistName.trim();
-            if (!name) return;
-            createPlaylist.mutate(
-              { name },
-              {
-                onSuccess: (data) => {
-                  setNewPlaylistName("");
-                  setNewPlaylistOpen(false);
-                  setSelectedPlaylistId(data.playlist.id);
-                },
-              }
-            );
-          }}
-        >
-          <input
-            value={newPlaylistName}
-            onChange={(e) => setNewPlaylistName(e.target.value)}
-            placeholder="Playlist name"
-            autoFocus
-            className="h-10 w-full rounded-lg border border-edge bg-surface px-3 text-sm text-primary placeholder:text-muted"
-          />
-          <button
-            type="submit"
-            disabled={!newPlaylistName.trim() || createPlaylist.isPending}
-            className="h-10 w-full rounded-lg border border-edge bg-hover font-mono text-[11px] uppercase tracking-widest text-primary disabled:opacity-40"
-          >
-            Create
-          </button>
-        </form>
-      </Dialog>
     </div>
   );
 }

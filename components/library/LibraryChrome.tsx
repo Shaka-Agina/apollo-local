@@ -71,7 +71,6 @@ const FILTER_PILLS: { id: LibraryFilter; label: string }[] = [
   { id: "artists", label: "Artists" },
   { id: "liked", label: "Liked" },
   { id: "playlists", label: "Lists" },
-  { id: "played", label: "Played" },
 ];
 
 export function StickyLibraryChrome({
@@ -114,15 +113,15 @@ export function StickyLibraryChrome({
   };
 
   return (
-    <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-base px-4 pb-3 pt-1 shadow-[0_1px_0_0_var(--border)] sm:-mx-6 sm:px-6">
+    <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-base px-4 pb-4 pt-1 shadow-[0_1px_0_0_var(--border)] sm:-mx-6 sm:px-6">
       <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 overflow-x-auto rounded-lg border border-edge">
+        <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-edge">
           {pills.map((p) => (
             <button
               key={p.id}
               onClick={() => onFilter(p.id)}
               className={cn(
-                "h-10 shrink-0 px-3 font-mono text-[11px] uppercase tracking-widest transition-colors",
+                "h-10 min-w-0 flex-1 truncate px-1 font-mono text-[11px] uppercase tracking-widest transition-colors",
                 filter === p.id
                   ? "bg-hover text-primary"
                   : "text-muted hover:text-secondary"
@@ -159,19 +158,17 @@ export function StickyLibraryChrome({
         />
       )}
 
-      {(filter === "albums" || filter === "artists") && (
-        <div className="flex items-center justify-between">
-          <button
-            onClick={cycleSort}
-            className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-secondary hover:text-primary"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}>
-              <path d="M8 6v12M8 6l-3 3M8 6l3 3M16 18V6M16 18l-3-3M16 18l3-3" />
-            </svg>
-            {sortLabel}
-          </button>
-        </div>
-      )}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={cycleSort}
+          className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-widest text-secondary hover:text-primary"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <path d="M8 6v12M8 6l-3 3M8 6l3 3M16 18V6M16 18l-3-3M16 18l3-3" />
+          </svg>
+          {sortLabel}
+        </button>
+      </div>
     </div>
   );
 }
